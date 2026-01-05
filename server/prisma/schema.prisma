@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Flow {
+  id        String   @id @default(uuid())
+  name      String   @default("Untitled Flow")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  sheets    Sheet[]
+
+  @@map("flows")
+}
+
+model Sheet {
+  id        String   @id @default(uuid())
+  flowId    String   @map("flow_id")
+  name      String   @default("Sheet 1")
+  order     Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  flow      Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  cells     Cell[]
+
+  @@map("sheets")
+  @@index([flowId])
+}
+
+model Cell {
+  id        String   @id @default(uuid())
+  sheetId   String   @map("sheet_id")
+  row       Int
+  column    Int
+  content   String   @default("")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  sheet     Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+
+  @@map("cells")
+  @@unique([sheetId, row, column])
+  @@index([sheetId])
+}
+
+
