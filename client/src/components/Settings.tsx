@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 
 const FONT_SIZE_KEY = 'bailey-font-size';
 const DEFAULT_FONT_SIZE = 16;
-const MIN_FONT_SIZE = 12;
+const MIN_FONT_SIZE = 6;
 const MAX_FONT_SIZE = 24;
 
 export default function Settings() {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, Flow, Sheet, Cell } from '../api/client';
+import { api, Flow, Cell } from '../api/client';
 
 export function useFlow(flowId: string | null) {
   const [flow, setFlow] = useState<Flow | null>(null);

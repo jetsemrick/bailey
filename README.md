@@ -16,30 +16,36 @@ A web-based application for judging policy debates with organized note-taking (f
 
 ## Prerequisites
 
-- Node.js 18+ and npm
+- Bun (recommended) or Node.js 18+
 - Supabase account (project already set up)
 
 ## Setup
 
 1. **Install dependencies**:
-   ```bash
-   cd client
-   npm install
-   ```
+```bash
+bun install
+```
 
 2. **Set up environment variables**:
    - Copy `client/.env.example` to `client/.env`
    - The Supabase credentials are already configured for the "Bailey" project
 
 3. **Start the development server**:
-   ```bash
-   cd client
-   npm run dev
-   ```
+```bash
+bun run dev
+```
 
-   This will start the frontend on http://localhost:3000
+This runs both the client and server (workspaces) in watch mode.
    
-   The backend is handled by Supabase - no Express server needed!
+If you only want one workspace:
+
+```bash
+bun --cwd client run dev
+```
+
+```bash
+bun --cwd server run dev
+```
 
 ## Project Structure
 
@@ -65,7 +71,9 @@ All tables have Row Level Security (RLS) enabled with permissive policies for no
 
 ## Development
 
-- Frontend dev server: `cd client && npm run dev`
+- Dev (client + server): `bun run dev`
+- Client only: `bun --cwd client run dev`
+- Server only: `bun --cwd server run dev`
 - Database management: Use Supabase Dashboard at https://supabase.com/dashboard
 
 

@@ -1,7 +1,7 @@
-import { Router } from 'express';
+import { Router, type Router as ExpressRouter } from 'express';
 import { prisma } from '../index.js';
 
-const router = Router();
+const router: ExpressRouter = Router();
 
 router.put('/:id', async (req, res) => {
   try {

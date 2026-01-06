@@ -3,12 +3,13 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "postinstall": "bun run prisma:generate",
+    "dev": "bun run prisma:generate && tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "start": "bun run prisma:generate && bun dist/index.js",
+    "prisma:generate": "bunx prisma generate",
+    "prisma:migrate": "bunx prisma migrate dev",
+    "prisma:studio": "bunx prisma studio"
   },
   "dependencies": {
     "@prisma/client": "^5.7.1",

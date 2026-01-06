@@ -6,12 +6,14 @@
     "client",
     "server"
   ],
+  "packageManager": "bun@1.3.1",
   "scripts": {
-    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
-    "dev:client": "npm run dev --workspace=client",
-    "dev:server": "npm run dev --workspace=server",
-    "build": "npm run build --workspace=client && npm run build --workspace=server",
-    "install:all": "npm install && npm install --workspace=client && npm install --workspace=server"
+    "dev": "concurrently \"bun run dev:client\" \"bun run dev:server\"",
+    "dev:client": "bun --cwd=client run dev",
+    "dev:server": "bun --cwd=server run dev",
+    "build": "bun --cwd=client run build && bun --cwd=server run build",
+    "start": "bun run dev",
+    "install:all": "bun install"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
