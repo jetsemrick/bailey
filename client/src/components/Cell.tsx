@@ -68,8 +68,8 @@ export default function Cell({ content, onUpdate, isHeader = false, columnLabel 
         onChange={(e) => setValue(e.target.value)}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        className="w-full h-full p-2 border-2 border-accent focus:outline-none resize-none bg-background text-foreground text-sm"
-        style={{ minHeight: '30px' }}
+        className="w-full h-full p-1 border-2 border-accent focus:outline-none resize-none bg-background text-foreground"
+        style={{ minHeight: '28px', fontSize: 'var(--cell-font-size, 16px)' }}
       />
     );
   }
@@ -77,7 +77,8 @@ export default function Cell({ content, onUpdate, isHeader = false, columnLabel 
   return (
     <div
       onClick={() => setIsEditing(true)}
-      className="w-full h-full p-2 border border-card-04 hover:bg-card-01 cursor-text min-h-[30px] whitespace-pre-wrap break-words text-sm text-foreground transition-colors"
+      className="w-full h-full p-1 border border-card-04 hover:bg-card-01 cursor-text whitespace-pre-wrap break-words text-foreground transition-colors"
+      style={{ minHeight: '28px', fontSize: 'var(--cell-font-size, 16px)' }}
     >
       {content || '\u00A0'}
     </div>

@@ -1,4 +1,5 @@
 import { ReactNode, useState, useEffect, useRef } from 'react';
+import Settings from './Settings';
 
 interface LayoutProps {
   children: ReactNode;
@@ -75,6 +76,7 @@ export default function Layout({ children, onGoHome, flowName, onRenameFlow }: L
             </>
           )}
         </div>
+        <Settings />
       </header>
       <main className="flex-1 overflow-hidden flex flex-col">
         {children}
