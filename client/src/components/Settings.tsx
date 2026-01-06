@@ -4,10 +4,13 @@ const FONT_SIZE_KEY = 'bailey-font-size';
 const DEFAULT_FONT_SIZE = 16;
 const MIN_FONT_SIZE = 6;
 const MAX_FONT_SIZE = 24;
+const COLUMN_COLORS_KEY = 'bailey-column-colors';
+const DEFAULT_COLUMN_COLORS = true;
 
 export default function Settings() {
   const [isOpen, setIsOpen] = useState(false);
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
+  const [columnColors, setColumnColors] = useState(DEFAULT_COLUMN_COLORS);
 
   useEffect(() => {
     const saved = localStorage.getItem(FONT_SIZE_KEY);
@@ -20,6 +23,15 @@ export default function Settings() {
     } else {
       document.documentElement.style.setProperty('--cell-font-size', `${DEFAULT_FONT_SIZE}px`);
     }
+
+    const savedColors = localStorage.getItem(COLUMN_COLORS_KEY);
+    if (savedColors !== null) {
+      const enabled = savedColors === 'true';
+      setColumnColors(enabled);
+      document.documentElement.style.setProperty('--column-colors-enabled', enabled ? '1' : '0');
+    } else {
+      document.documentElement.style.setProperty('--column-colors-enabled', DEFAULT_COLUMN_COLORS ? '1' : '0');
+    }
   }, []);
 
   const handleFontSizeChange = (size: number) => {
@@ -27,6 +39,12 @@ export default function Settings() {
     setFontSize(clampedSize);
     localStorage.setItem(FONT_SIZE_KEY, clampedSize.toString());
     document.documentElement.style.setProperty('--cell-font-size', `${clampedSize}px`);
+  };
+
+  const handleColumnColorsChange = (enabled: boolean) => {
+    setColumnColors(enabled);
+    localStorage.setItem(COLUMN_COLORS_KEY, enabled.toString());
+    document.documentElement.style.setProperty('--column-colors-enabled', enabled ? '1' : '0');
   };
 
   return (
@@ -125,6 +143,20 @@ export default function Settings() {
                     </button>
                   </div>
                 </div>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={columnColors}
+                    onChange={(e) => handleColumnColorsChange(e.target.checked)}
+                    className="w-4 h-4 rounded border-card-04 text-accent focus:ring-accent focus:ring-offset-0"
+                  />
+                  <span className="text-sm font-medium">
+                    Color code columns (blue for aff, red for neg)
+                  </span>
+                </label>
               </div>
             </div>
           </div>

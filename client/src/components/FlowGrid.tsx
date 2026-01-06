@@ -53,6 +53,7 @@ export default function FlowGrid({ currentSheetId, getCellContent, onCellUpdate 
                 key={`${rowIndex}-${col.index}`}
                 content={getCellContent(rowIndex, col.index)}
                 onUpdate={(content) => handleCellUpdate(rowIndex, col.index, content)}
+                columnLabel={col.label}
               />
             ))
           )}

@@ -17,6 +17,22 @@ const COLUMN_STYLES: Record<string, string> = {
   '2AR': 'text-blue-600 border-b-blue-600/20',
 };
 
+const COLUMN_TEXT_COLORS: Record<string, string> = {
+  '1AC': 'text-blue-600',
+  '1NC': 'text-red-600',
+  '2AC': 'text-blue-600',
+  'Block': 'text-red-600',
+  '1AR': 'text-blue-600',
+  '2NR': 'text-red-600',
+  '2AR': 'text-blue-600',
+};
+
+function isColumnColorsEnabled(): boolean {
+  if (typeof window === 'undefined') return true;
+  const enabled = getComputedStyle(document.documentElement).getPropertyValue('--column-colors-enabled');
+  return enabled.trim() === '1';
+}
+
 export default function Cell({ content, onUpdate, isHeader = false, columnLabel }: CellProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(content);
@@ -51,10 +67,22 @@ export default function Cell({ content, onUpdate, isHeader = false, columnLabel 
     }
   };
 
+  const getTextColorClass = () => {
+    if (!columnLabel || !isColumnColorsEnabled()) {
+      return 'text-foreground';
+    }
+    return COLUMN_TEXT_COLORS[columnLabel] || 'text-foreground';
+  };
+
   if (isHeader) {
-    const style = columnLabel ? COLUMN_STYLES[columnLabel] || 'text-foreground' : 'text-foreground';
+    const getHeaderStyle = () => {
+      if (!columnLabel || !isColumnColorsEnabled()) {
+        return 'text-foreground border-b-card-04';
+      }
+      return COLUMN_STYLES[columnLabel] || 'text-foreground border-b-card-04';
+    };
     return (
-      <div className={`px-3 py-3 font-medium text-sm border-b-2 bg-card text-center ${style} transition-colors`}>
+      <div className={`px-3 py-3 font-medium text-sm border-b-2 bg-card text-center ${getHeaderStyle()} transition-colors`}>
         {columnLabel}
       </div>
     );
@@ -68,7 +96,7 @@ export default function Cell({ content, onUpdate, isHeader = false, columnLabel 
         onChange={(e) => setValue(e.target.value)}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        className="w-full h-full p-1 border-2 border-accent focus:outline-none resize-none bg-background text-foreground"
+        className={`w-full p-1 border-2 border-accent focus:outline-none resize-none bg-background ${getTextColorClass()}`}
         style={{ minHeight: '28px', fontSize: 'var(--cell-font-size, 16px)' }}
       />
     );
@@ -77,7 +105,7 @@ export default function Cell({ content, onUpdate, isHeader = false, columnLabel 
   return (
     <div
       onClick={() => setIsEditing(true)}
-      className="w-full h-full p-1 border border-card-04 hover:bg-card-01 cursor-text whitespace-pre-wrap break-words text-foreground transition-colors"
+      className={`w-full p-1 border border-card-04 hover:bg-card-01 cursor-text whitespace-pre-wrap break-words ${getTextColorClass()} transition-colors`}
       style={{ minHeight: '28px', fontSize: 'var(--cell-font-size, 16px)' }}
     >
       {content || '\u00A0'}
