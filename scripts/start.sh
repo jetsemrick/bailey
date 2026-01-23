@@ -3,7 +3,7 @@ set -euo pipefail
 
 mode="${1:-dev}"
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 if ! command -v bun >/dev/null 2>&1; then
   echo "bun is required. Install it from https://bun.sh/"
@@ -13,21 +13,21 @@ fi
 # Reproducible install (requires bun.lock)
 bun install --frozen-lockfile
 
-# Ensure Prisma Client exists before starting the server workspace
-bun --cwd=server run prisma:generate
+# Ensure Prisma Client exists before starting the backend workspace
+bun --cwd=backend run prisma:generate
 
 case "$mode" in
   dev)
     exec bun run dev
     ;;
-  client)
-    exec bun --cwd=client run dev
+  frontend)
+    exec bun --cwd=frontend run dev
     ;;
-  server)
-    exec bun --cwd=server run dev
+  backend)
+    exec bun --cwd=backend run dev
     ;;
   *)
-    echo "Usage: ./start.sh [dev|client|server]"
+    echo "Usage: ./start.sh [dev|frontend|backend]"
     exit 2
     ;;
 esac

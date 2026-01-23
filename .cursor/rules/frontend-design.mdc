@@ -1,0 +1,66 @@
+---
+description: Enforces design system colors, principles, and typography. Use when designing UI components, styling, or creating new frontend features.
+globs: *.tsx,*.jsx,*.css,*.scss,*.html
+alwaysApply: false
+---
+# Frontend Design Rules
+
+## CSS Variables
+Use these variables instead of hardcoded hex values to ensure consistency and theme support.
+
+```css
+:root {
+  /* Brand Colors (Light Mode) */
+  --color-primary:   #334155; /* Slate 700 - Main actions, active states */
+  --color-secondary: #0D9488; /* Teal 600 - Accents, highlights (Darker Mint) */
+  
+  /* Feedback Colors (Subtle/Pastel) */
+  --color-success:   #4ADE80; /* Pastel Green */
+  --color-warning:   #FBBF24; /* Pastel Amber */
+  --color-error:     #F87171; /* Pastel Red */
+  --color-info:      #60A5FA; /* Pastel Blue */
+
+  /* Light Theme Backgrounds */
+  --bg-body:     #F8FAFC; /* Slate 50 */
+  --bg-card:     #FFFFFF; /* White */
+  --bg-terminal: #FFFFFF; /* White - All white look */
+
+  /* Typography */
+  --text-primary:   #0F172A; /* Slate 900 */
+  --text-secondary: #475569; /* Slate 600 */
+  --text-muted:     #94A3B8; /* Slate 400 */
+
+  /* UI Elements */
+  --border-color: #E2E8F0; /* Slate 200 */
+}
+```
+
+## Implementation Guidelines
+
+### 1. Color Usage
+- **Primary (`--color-primary`)**: High-priority actions (buttons, tabs, active links). Adapted for light mode contrast.
+- **Secondary (`--color-secondary`)**: Decorative accents, subtle highlights.
+- **Text**:
+  - Use `--text-primary` for headings and main content.
+  - Use `--text-secondary` for descriptions and metadata.
+  - Use `--text-muted` for placeholders and disabled states.
+
+### 2. Code Style
+- **Always use CSS variables** for colors.
+- **Avoid inline styles**; use classes or styled components.
+- **Mobile-First**: Write responsive styles using media queries for larger screens if needed, or stick to fluid layouts.
+
+### 3. Typography
+- **Font Stack**:
+  - **Body/UI**: `IBM Plex Serif`, serif.
+  - **Code/Terminal**: `IBM Plex Mono`, monospace.
+- **Hierarchy**: distinct font weights and colors to establish clear visual hierarchy.
+
+### 4. Spacing & Layout
+- Use consistent padding/margins (multiples of 4px or 8px).
+- **Cards**: Use `--bg-card` with `--border-color` for contained elements. Add hover effects for interactivity.
+
+## Principles
+- **Usability**: Clear navigation, accessible contrast, immediate feedback.
+- **Readability**: High contrast, ample whitespace, clear typography.
+- **Minimalism**: Every element must serve a purpose. Reduce visual noise.

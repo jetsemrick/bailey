@@ -1,0 +1,10 @@
+{
+  "target": {
+    "team": "Bailey",
+    "project": "Bailey"
+  },
+  "defaults": {
+    "labels": [],
+    "priority": 2
+  }
+}

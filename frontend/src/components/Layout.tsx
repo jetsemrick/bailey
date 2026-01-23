@@ -1,5 +1,6 @@
 import { ReactNode, useState, useEffect, useRef } from 'react';
 import Settings from './Settings';
+import Timers from './Timers';
 
 interface LayoutProps {
   children: ReactNode;
@@ -76,7 +77,10 @@ export default function Layout({ children, onGoHome, flowName, onRenameFlow }: L
             </>
           )}
         </div>
-        <Settings />
+        <div className="flex items-center gap-4">
+          {flowName && <Timers />}
+          {flowName && <Settings />}
+        </div>
       </header>
       <main className="flex-1 overflow-hidden flex flex-col">
         {children}

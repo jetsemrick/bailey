@@ -3,15 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "client",
-    "server"
+    "frontend",
+    "backend"
   ],
   "packageManager": "bun@1.3.1",
   "scripts": {
-    "dev": "concurrently \"bun run dev:client\" \"bun run dev:server\"",
-    "dev:client": "bun --cwd=client run dev",
-    "dev:server": "bun --cwd=server run dev",
-    "build": "bun --cwd=client run build && bun --cwd=server run build",
+    "dev": "concurrently \"bun run dev:frontend\" \"bun run dev:backend\"",
+    "dev:frontend": "bun --cwd=frontend run dev",
+    "dev:backend": "bun --cwd=backend run dev",
+    "build": "bun --cwd=frontend run build && bun --cwd=backend run build",
     "start": "bun run dev",
     "install:all": "bun install"
   },
