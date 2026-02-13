@@ -147,6 +147,12 @@ export default function FlowGrid({ grid }: FlowGridProps) {
   const [focusedCell, setFocusedCell] = useState<{ col: number; row: number } | null>(null);
   const [dragItem, setDragItem] = useState<{ id: string; col: number; row: number } | null>(null);
 
+  // Clear undo/redo stack and focus when switching flow tabs
+  useEffect(() => {
+    undoRedo.clear();
+    setFocusedCell(null);
+  }, [activeFlowId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
