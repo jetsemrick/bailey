@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import Sidebar from '../components/Sidebar';
 import FlowGrid from '../components/FlowGrid';
 import FlowTabs from '../components/FlowTabs';
 import Timer from '../components/Timer';
@@ -18,6 +19,7 @@ export default function RoundPage() {
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [showNewFlow, setShowNewFlow] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
   useEffect(() => {
     if (!id) return;
@@ -57,27 +59,37 @@ export default function RoundPage() {
 
   return (
     <Layout breadcrumbs={breadcrumbs}>
-      <div className="flex flex-col flex-1 overflow-hidden">
-        {/* Grid area */}
-        <FlowGrid grid={grid} />
-
-        {/* Tab bar */}
-        <FlowTabs
-          flows={grid.flows}
-          activeFlowId={grid.activeFlowId}
-          onSelect={grid.selectFlow}
-          onAdd={() => setShowNewFlow(true)}
-          onRename={grid.renameFlow}
-          onDelete={grid.removeFlow}
-          onReorder={grid.reorderFlows}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <Sidebar
+          activeRoundId={id}
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed((v) => !v)}
         />
 
-        {/* Error bar */}
-        {grid.error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border-t border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-1.5 text-xs">
-            {grid.error}
-          </div>
-        )}
+        {/* Main content */}
+        <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+          {/* Grid area */}
+          <FlowGrid grid={grid} />
+
+          {/* Tab bar */}
+          <FlowTabs
+            flows={grid.flows}
+            activeFlowId={grid.activeFlowId}
+            onSelect={grid.selectFlow}
+            onAdd={() => setShowNewFlow(true)}
+            onRename={grid.renameFlow}
+            onDelete={grid.removeFlow}
+            onReorder={grid.reorderFlows}
+          />
+
+          {/* Error bar */}
+          {grid.error && (
+            <div className="bg-red-50 dark:bg-red-900/20 border-t border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-1.5 text-xs">
+              {grid.error}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Timer */}
