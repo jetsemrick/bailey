@@ -189,13 +189,13 @@ export function useFlowGrid(roundId: string | undefined) {
     [activeFlowId, scheduleSave]
   );
 
-  // -- Row count per column (dynamic) --
+  // -- Row count per column (dynamic, only counts non-empty cells) --
   const getColumnRowCount = useCallback(
     (col: number): number => {
       let max = -1;
-      for (const [key] of cells) {
+      for (const [key, cell] of cells) {
         const [c, r] = key.split(':').map(Number);
-        if (c === col && r > max) max = r;
+        if (c === col && cell.content.trim() !== '' && r > max) max = r;
       }
       return max + 1;
     },
