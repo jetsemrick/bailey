@@ -26,6 +26,14 @@ export function useTimer() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
+  // Refs so the tick callback always reads the latest values
+  const activePresetRef = useRef(activePreset);
+  const prepSideRef = useRef(prepSide);
+  const totalSecondsRef = useRef(totalSeconds);
+  activePresetRef.current = activePreset;
+  prepSideRef.current = prepSide;
+  totalSecondsRef.current = totalSeconds;
+
   // Cleanup interval on unmount
   useEffect(() => {
     return () => {
@@ -60,6 +68,7 @@ export function useTimer() {
     setRunning(false);
   }, []);
 
+  // tick reads from refs so the setInterval callback is always current
   const tick = useCallback(() => {
     setSecondsLeft((prev) => {
       if (prev <= 1) {
@@ -68,17 +77,19 @@ export function useTimer() {
         playBeep();
 
         // Deduct from prep if active
-        if (activePreset === 'prep') {
+        if (activePresetRef.current === 'prep') {
+          const side = prepSideRef.current;
+          const total = totalSecondsRef.current;
           setPrepTime((pt) => ({
             ...pt,
-            [prepSide]: Math.max(0, pt[prepSide] - totalSeconds),
+            [side]: Math.max(0, pt[side] - total),
           }));
         }
         return 0;
       }
       return prev - 1;
     });
-  }, [stop, playBeep, activePreset, prepSide, totalSeconds]);
+  }, [stop, playBeep]);
 
   const start = useCallback(() => {
     if (secondsLeft <= 0 || running) return;
