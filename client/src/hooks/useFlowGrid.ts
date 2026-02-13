@@ -120,10 +120,10 @@ export function useFlowGrid(roundId: string | undefined) {
     (col: number, row: number, content: string, color?: CellColor) => {
       if (!activeFlowId) return;
       const key = `${col}:${row}`;
-      const existing = cells.get(key);
-      const cellColor = color !== undefined ? color : existing?.color ?? null;
 
       setCells((prev) => {
+        const existing = prev.get(key);
+        const cellColor = color !== undefined ? color : existing?.color ?? null;
         const next = new Map(prev);
         next.set(key, {
           id: existing?.id ?? '',
@@ -136,13 +136,15 @@ export function useFlowGrid(roundId: string | undefined) {
           created_at: existing?.created_at ?? new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
+
+        // Track dirty cell for auto-save
+        dirtyRef.current.set(key, { column_index: col, row_index: row, content, color: cellColor });
         return next;
       });
 
-      dirtyRef.current.set(key, { column_index: col, row_index: row, content, color: cellColor });
       scheduleSave();
     },
-    [activeFlowId, cells, scheduleSave]
+    [activeFlowId, scheduleSave]
   );
 
   const updateCellColor = useCallback(
