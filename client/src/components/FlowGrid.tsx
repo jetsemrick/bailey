@@ -37,7 +37,6 @@ const COLUMN_SIDES: Record<string, 'aff' | 'neg'> = {
   '1NR': 'neg', '1AR': 'aff', '2NR': 'neg', '2AR': 'aff',
 };
 
-/** Minimum rows displayed per column */
 const MIN_ROWS = 8;
 
 // ── Sortable cell wrapper ────────────────────────────────────
@@ -61,7 +60,7 @@ function SortableCell({
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="border-b border-card-04">
       <Cell
         content={content}
         color={color}
@@ -71,6 +70,67 @@ function SortableCell({
         onFocus={onFocus}
         onNavigate={onNavigate}
       />
+    </div>
+  );
+}
+
+// ── Single column ────────────────────────────────────────────
+
+function FlowColumn({
+  colIdx,
+  label,
+  rowCount,
+  getCellContent,
+  getCellColor,
+  onCellUpdate,
+  onColorChange,
+  focusedCell,
+  onFocusCell,
+  onNavigate,
+}: {
+  colIdx: number;
+  label: string;
+  rowCount: number;
+  getCellContent: (col: number, row: number) => string;
+  getCellColor: (col: number, row: number) => CellColor;
+  onCellUpdate: (col: number, row: number, content: string) => void;
+  onColorChange: (col: number, row: number, color: CellColor) => void;
+  focusedCell: { col: number; row: number } | null;
+  onFocusCell: (col: number, row: number) => void;
+  onNavigate: (from: { col: number; row: number }, dir: 'up' | 'down' | 'left' | 'right') => void;
+}) {
+  const side = COLUMN_SIDES[label];
+  const items = useMemo(
+    () => Array.from({ length: rowCount }, (_, r) => `${colIdx}:${r}`),
+    [colIdx, rowCount]
+  );
+
+  return (
+    <div className="flex flex-col flex-1 min-w-[100px] border-r border-card-04 last:border-r-0">
+      {/* Header */}
+      <div
+        className={`sticky top-0 z-10 px-2 py-1.5 text-xs font-semibold text-center border-b border-card-04 bg-card ${COLUMN_COLORS[side]}`}
+      >
+        {label}
+      </div>
+      {/* Sortable cells */}
+      <SortableContext items={items} strategy={verticalListSortingStrategy}>
+        {items.map((itemId, rowIdx) => (
+          <SortableCell
+            key={itemId}
+            id={itemId}
+            col={colIdx}
+            row={rowIdx}
+            content={getCellContent(colIdx, rowIdx)}
+            color={getCellColor(colIdx, rowIdx)}
+            onUpdate={(c) => onCellUpdate(colIdx, rowIdx, c)}
+            onColorChange={(c) => onColorChange(colIdx, rowIdx, c)}
+            focused={focusedCell?.col === colIdx && focusedCell?.row === rowIdx}
+            onFocus={() => onFocusCell(colIdx, rowIdx)}
+            onNavigate={(d) => onNavigate({ col: colIdx, row: rowIdx }, d)}
+          />
+        ))}
+      </SortableContext>
     </div>
   );
 }
@@ -92,12 +152,14 @@ export default function FlowGrid({ grid }: FlowGridProps) {
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
   );
 
-  // Compute row counts per column
-  const rowCounts = useMemo(() => {
-    return SPEECH_COLUMNS.map((_, i) => Math.max(MIN_ROWS, getColumnRowCount(i) + 1));
+  // Compute max rows across all columns
+  const maxRows = useMemo(() => {
+    let max = MIN_ROWS;
+    for (let i = 0; i < 8; i++) {
+      max = Math.max(max, getColumnRowCount(i) + 1);
+    }
+    return max;
   }, [getColumnRowCount, activeFlowId, grid.cells]);
-
-  const maxRows = Math.max(...rowCounts);
 
   // Cell update with undo tracking
   const handleCellUpdate = useCallback(
@@ -187,8 +249,7 @@ export default function FlowGrid({ grid }: FlowGridProps) {
       // Same column: reorder
       if (fromCol === toCol) {
         const colRows: { row: number; content: string; color: CellColor }[] = [];
-        const count = Math.max(MIN_ROWS, getColumnRowCount(fromCol) + 1);
-        for (let r = 0; r < count; r++) {
+        for (let r = 0; r < maxRows; r++) {
           colRows.push({
             row: r,
             content: getCellContent(fromCol, r),
@@ -205,13 +266,11 @@ export default function FlowGrid({ grid }: FlowGridProps) {
         // Cross-column move
         const content = getCellContent(fromCol, fromRow);
         const color = getCellColor(fromCol, fromRow);
-        // Clear source
         updateCell(fromCol, fromRow, '');
-        // Set target
         updateCell(toCol, toRow, content, color);
       }
     },
-    [getCellContent, getCellColor, getColumnRowCount, bulkUpdateCells, updateCell]
+    [getCellContent, getCellColor, maxRows, bulkUpdateCells, updateCell]
   );
 
   if (!activeFlowId) {
@@ -222,15 +281,6 @@ export default function FlowGrid({ grid }: FlowGridProps) {
     );
   }
 
-  // Build column items for sortable context
-  const columnItems = SPEECH_COLUMNS.map((_, colIdx) => {
-    const items: string[] = [];
-    for (let r = 0; r < maxRows; r++) {
-      items.push(`${colIdx}:${r}`);
-    }
-    return items;
-  });
-
   return (
     <DndContext
       sensors={sensors}
@@ -239,53 +289,28 @@ export default function FlowGrid({ grid }: FlowGridProps) {
       onDragEnd={handleDragEnd}
     >
       <div className="flex-1 overflow-auto">
-        <div className="grid grid-cols-8 min-w-[800px]">
-          {/* Header row */}
-          {SPEECH_COLUMNS.map((label) => {
-            const side = COLUMN_SIDES[label];
-            return (
-              <div
-                key={label}
-                className={`sticky top-0 z-10 px-2 py-1.5 text-xs font-semibold text-center border-b border-r border-card-04 bg-card ${COLUMN_COLORS[side]}`}
-              >
-                {label}
-              </div>
-            );
-          })}
-
-          {/* Data rows */}
-          {Array.from({ length: maxRows }, (_, rowIdx) =>
-            SPEECH_COLUMNS.map((_, colIdx) => {
-              const itemId = `${colIdx}:${rowIdx}`;
-              return (
-                <div key={itemId} className="border-r border-b border-card-04">
-                  <SortableContext
-                    items={columnItems[colIdx]}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <SortableCell
-                      id={itemId}
-                      col={colIdx}
-                      row={rowIdx}
-                      content={getCellContent(colIdx, rowIdx)}
-                      color={getCellColor(colIdx, rowIdx)}
-                      onUpdate={(c) => handleCellUpdate(colIdx, rowIdx, c)}
-                      onColorChange={(c) => handleColorChange(colIdx, rowIdx, c)}
-                      focused={focusedCell?.col === colIdx && focusedCell?.row === rowIdx}
-                      onFocus={() => setFocusedCell({ col: colIdx, row: rowIdx })}
-                      onNavigate={(d) => navigate({ col: colIdx, row: rowIdx }, d)}
-                    />
-                  </SortableContext>
-                </div>
-              );
-            })
-          )}
+        <div className="flex min-w-[800px]">
+          {SPEECH_COLUMNS.map((label, colIdx) => (
+            <FlowColumn
+              key={label}
+              colIdx={colIdx}
+              label={label}
+              rowCount={maxRows}
+              getCellContent={getCellContent}
+              getCellColor={getCellColor}
+              onCellUpdate={handleCellUpdate}
+              onColorChange={handleColorChange}
+              focusedCell={focusedCell}
+              onFocusCell={(col, row) => setFocusedCell({ col, row })}
+              onNavigate={navigate}
+            />
+          ))}
         </div>
       </div>
 
       <DragOverlay>
         {dragItem && (
-          <div className="bg-accent/10 border border-accent rounded p-1 text-sm opacity-80">
+          <div className="bg-accent/10 border border-accent rounded p-1 text-sm opacity-80 max-w-[150px] truncate">
             {getCellContent(dragItem.col, dragItem.row) || '(empty)'}
           </div>
         )}
