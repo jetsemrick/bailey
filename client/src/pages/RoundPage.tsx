@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Sidebar from '../components/Sidebar';
@@ -9,6 +9,7 @@ import NewFlowDialog from '../components/NewFlowDialog';
 import { useFlowGrid } from '../hooks/useFlowGrid';
 import * as api from '../db/api';
 import type { Round, Tournament } from '../db/types';
+import type { ExportedRound } from '../db/api';
 
 export default function RoundPage() {
   const { id } = useParams<{ id: string }>();
@@ -34,9 +35,44 @@ export default function RoundPage() {
       .finally(() => setLoadingMeta(false));
   }, [id, navigate]);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const handleAddFlow = async (positionName: string, initiatedBy: 'aff' | 'neg') => {
     await grid.addFlow(positionName, initiatedBy);
     setShowNewFlow(false);
+  };
+
+  const handleExportRound = async () => {
+    if (!id || !round) return;
+    try {
+      const data = await api.exportRound(id);
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeName = (round.opponent || `round-${round.round_number}`).replace(/[^a-zA-Z0-9]/g, '-');
+      a.download = `bailey-round-${safeName}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+    }
+  };
+
+  const handleImportRound = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !round) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text) as ExportedRound;
+      if (!data.round) throw new Error('Invalid round file');
+      const newRoundId = await api.importRound(round.tournament_id, data);
+      navigate(`/round/${newRoundId}`);
+    } catch (err) {
+      console.error('Import failed:', err);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   if (loadingMeta || grid.loading) {
@@ -57,8 +93,33 @@ export default function RoundPage() {
     });
   }
 
+  const roundActions = (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={handleExportRound}
+        className="px-2 py-1 text-xs bg-card-02 text-foreground/70 rounded hover:bg-card-03 transition-colors"
+        title="Export this round as JSON"
+      >
+        Export
+      </button>
+      <label
+        className="px-2 py-1 text-xs bg-card-02 text-foreground/70 rounded hover:bg-card-03 transition-colors cursor-pointer"
+        title="Import a round from JSON"
+      >
+        Import
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          onChange={handleImportRound}
+          className="hidden"
+        />
+      </label>
+    </div>
+  );
+
   return (
-    <Layout breadcrumbs={breadcrumbs}>
+    <Layout breadcrumbs={breadcrumbs} headerActions={roundActions}>
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <Sidebar

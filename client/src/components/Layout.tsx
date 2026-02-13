@@ -11,9 +11,11 @@ interface Breadcrumb {
 interface LayoutProps {
   children: ReactNode;
   breadcrumbs?: Breadcrumb[];
+  /** Extra action buttons rendered in the header (right side, before settings) */
+  headerActions?: ReactNode;
 }
 
-export default function Layout({ children, breadcrumbs }: LayoutProps) {
+export default function Layout({ children, breadcrumbs, headerActions }: LayoutProps) {
   const { user, signOut } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const location = useLocation();
@@ -51,6 +53,7 @@ export default function Layout({ children, breadcrumbs }: LayoutProps) {
           ))}
         </div>
         <div className="flex items-center gap-2">
+          {headerActions}
           <Settings />
           {user && (
             <div className="relative">

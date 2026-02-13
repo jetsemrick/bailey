@@ -217,13 +217,19 @@ export async function deleteCellsByFlow(flowId: string): Promise<void> {
 
 // ── Export / Import helpers ──────────────────────────────────
 
+export type ExportedRoundData = Omit<Round, 'user_id'> & {
+  flows: (Omit<Flow, 'user_id'> & {
+    cells: Omit<FlowCell, 'user_id'>[];
+  })[];
+};
+
 export interface ExportedTournament {
   tournament: Omit<Tournament, 'user_id'>;
-  rounds: (Omit<Round, 'user_id'> & {
-    flows: (Omit<Flow, 'user_id'> & {
-      cells: Omit<FlowCell, 'user_id'>[];
-    })[];
-  })[];
+  rounds: ExportedRoundData[];
+}
+
+export interface ExportedRound {
+  round: ExportedRoundData;
 }
 
 export async function exportTournament(tournamentId: string): Promise<ExportedTournament> {
@@ -247,6 +253,70 @@ export async function exportTournament(tournamentId: string): Promise<ExportedTo
 
   const { user_id: _u4, ...tournamentData } = tournament;
   return { tournament: tournamentData, rounds: roundsWithFlows };
+}
+
+export async function exportRound(roundId: string): Promise<ExportedRound> {
+  const round = await getRound(roundId);
+  const flows = await listFlows(roundId);
+  const flowsWithCells = await Promise.all(
+    flows.map(async (flow) => {
+      const cells = await listCells(flow.id);
+      const { user_id: _u, ...flowData } = flow;
+      return { ...flowData, cells: cells.map(({ user_id: _u2, ...c }) => c) };
+    })
+  );
+  const { user_id: _u3, ...roundData } = round;
+  return { round: { ...roundData, flows: flowsWithCells } };
+}
+
+export async function importRound(
+  tournamentId: string,
+  data: ExportedRound
+): Promise<string> {
+  const userId = await uid();
+  const { data: newRound, error: rErr } = await supabase
+    .from('rounds')
+    .insert({
+      user_id: userId,
+      tournament_id: tournamentId,
+      round_number: data.round.round_number,
+      opponent: data.round.opponent,
+      side: data.round.side,
+      result: data.round.result,
+    })
+    .select()
+    .single();
+  if (rErr) throw rErr;
+
+  for (const flow of data.round.flows) {
+    const { data: newFlow, error: fErr } = await supabase
+      .from('flow_tabs')
+      .insert({
+        user_id: userId,
+        round_id: newRound.id,
+        position_name: flow.position_name,
+        initiated_by: flow.initiated_by,
+        display_order: flow.display_order,
+      })
+      .select()
+      .single();
+    if (fErr) throw fErr;
+
+    if (flow.cells.length > 0) {
+      const cellRows = flow.cells.map((c) => ({
+        user_id: userId,
+        flow_id: newFlow.id,
+        column_index: c.column_index,
+        row_index: c.row_index,
+        content: c.content,
+        color: c.color,
+      }));
+      const { error: cErr } = await supabase.from('flow_cells').insert(cellRows);
+      if (cErr) throw cErr;
+    }
+  }
+
+  return newRound.id;
 }
 
 export async function importTournament(data: ExportedTournament): Promise<string> {
