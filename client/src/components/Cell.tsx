@@ -90,6 +90,47 @@ export default function Cell({
     }
   }, [editing]);
 
+  const applyInlineHighlight = useCallback(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+
+    // Check if we're inside a mark already
+    let parentMark: HTMLElement | null = null;
+    let node: Node | null = range.startContainer;
+    while (node && node !== divRef.current) {
+      if (node instanceof HTMLElement && node.tagName === 'MARK') {
+        parentMark = node;
+        break;
+      }
+      node = node.parentNode;
+    }
+
+    if (parentMark) {
+      // Cycle color or remove
+      const current = parentMark.getAttribute('data-color') || 'yellow';
+      const cycle = ['yellow', 'green', 'blue'];
+      const idx = cycle.indexOf(current);
+      if (idx >= 0 && idx < cycle.length - 1) {
+        parentMark.setAttribute('data-color', cycle[idx + 1]);
+      } else {
+        // Remove the mark, keep content
+        const frag = document.createDocumentFragment();
+        while (parentMark.firstChild) frag.appendChild(parentMark.firstChild);
+        parentMark.parentNode?.replaceChild(frag, parentMark);
+      }
+    } else {
+      // Wrap selection in mark
+      const mark = document.createElement('mark');
+      mark.setAttribute('data-color', 'yellow');
+      try {
+        range.surroundContents(mark);
+      } catch {
+        // surroundContents fails if selection crosses element boundaries
+      }
+    }
+  }, []);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (editing) {
       if (e.key === 'Escape') {
@@ -107,6 +148,11 @@ export default function Cell({
       if ((e.metaKey || e.ctrlKey) && e.key === 'u') {
         e.preventDefault();
         document.execCommand('underline');
+      }
+      // Inline highlight: Ctrl+E cycles yellow -> green -> blue -> none
+      if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
+        e.preventDefault();
+        applyInlineHighlight();
       }
       // Tab to move to next cell
       if (e.key === 'Tab') {
