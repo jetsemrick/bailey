@@ -16,8 +16,6 @@ interface CellProps {
   focused?: boolean;
   onFocus?: () => void;
   onNavigate?: (direction: 'up' | 'down' | 'left' | 'right') => void;
-  /** For drag-and-drop data */
-  cellId?: string;
 }
 
 /** Sanitize HTML to only allow b, u, mark tags */
