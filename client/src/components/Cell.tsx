@@ -145,7 +145,7 @@ export default function Cell({
 
   if (editing) {
     return (
-      <div className={`relative border border-accent ${colorClass}`}>
+      <div className={`relative ring-2 ring-accent ring-inset ${colorClass}`}>
         <div
           ref={divRef}
           contentEditable
@@ -193,7 +193,7 @@ export default function Cell({
       onClick={startEditing}
       onFocus={onFocus}
       onKeyDown={handleKeyDown}
-      className={`w-full min-h-[28px] p-1 border border-card-04 hover:bg-card-01 cursor-text whitespace-pre-wrap break-words text-foreground transition-colors ${colorClass} ${
+      className={`w-full min-h-[28px] p-1 hover:bg-card-01 cursor-text whitespace-pre-wrap break-words text-foreground transition-colors ${colorClass} ${
         focused ? 'ring-1 ring-accent/50' : ''
       }`}
       style={{ fontSize: 'var(--cell-font-size, 14px)' }}
