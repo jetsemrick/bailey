@@ -1,87 +1,203 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import type { CellColor } from '../db/types';
+
+const COLOR_BG: Record<string, string> = {
+  yellow: 'bg-yellow-100/60 dark:bg-yellow-900/20',
+  green: 'bg-green-100/60 dark:bg-green-900/20',
+  blue: 'bg-blue-100/60 dark:bg-blue-900/20',
+};
 
 interface CellProps {
   content: string;
+  color: CellColor;
   onUpdate: (content: string) => void;
-  isHeader?: boolean;
-  columnLabel?: string;
+  onColorChange?: (color: CellColor) => void;
+  /** Whether this cell currently has keyboard focus */
+  focused?: boolean;
+  onFocus?: () => void;
+  onNavigate?: (direction: 'up' | 'down' | 'left' | 'right') => void;
+  /** For drag-and-drop data */
+  cellId?: string;
 }
 
-const COLUMN_STYLES: Record<string, string> = {
-  '1AC': 'text-blue-600 border-b-blue-600/20',
-  '1NC': 'text-red-600 border-b-red-600/20',
-  '2AC': 'text-blue-600 border-b-blue-600/20',
-  'Block': 'text-red-600 border-b-red-600/20',
-  '1AR': 'text-blue-600 border-b-blue-600/20',
-  '2NR': 'text-red-600 border-b-red-600/20',
-  '2AR': 'text-blue-600 border-b-blue-600/20',
-};
-
-export default function Cell({ content, onUpdate, isHeader = false, columnLabel }: CellProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [value, setValue] = useState(content);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    setValue(content);
-  }, [content]);
-
-  useEffect(() => {
-    if (isEditing && textareaRef.current) {
-      textareaRef.current.focus();
-      textareaRef.current.select();
+/** Sanitize HTML to only allow b, u, mark tags */
+function sanitizeHtml(html: string): string {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  const walk = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    const el = node as Element;
+    const tag = el.tagName.toLowerCase();
+    const children = Array.from(node.childNodes).map(walk).join('');
+    if (tag === 'b' || tag === 'strong') return `<b>${children}</b>`;
+    if (tag === 'u') return `<u>${children}</u>`;
+    if (tag === 'mark') {
+      const color = el.getAttribute('data-color') || '';
+      return `<mark data-color="${color}">${children}</mark>`;
     }
-  }, [isEditing]);
-
-  const handleBlur = () => {
-    setIsEditing(false);
-    if (value !== content) {
-      onUpdate(value);
-    }
+    if (tag === 'br') return '\n';
+    if (tag === 'div' || tag === 'p') return children ? children + '\n' : '';
+    return children;
   };
+  return Array.from(div.childNodes).map(walk).join('').replace(/\n+$/, '');
+}
+
+export default function Cell({
+  content,
+  color,
+  onUpdate,
+  onColorChange,
+  focused,
+  onFocus,
+  onNavigate,
+}: CellProps) {
+  const [editing, setEditing] = useState(false);
+  const divRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Focus management
+  useEffect(() => {
+    if (focused && !editing && wrapperRef.current) {
+      wrapperRef.current.focus();
+    }
+  }, [focused, editing]);
+
+  const commitEdit = useCallback(() => {
+    if (!divRef.current) return;
+    const newContent = sanitizeHtml(divRef.current.innerHTML);
+    setEditing(false);
+    if (newContent !== content) {
+      onUpdate(newContent);
+    }
+  }, [content, onUpdate]);
+
+  const startEditing = useCallback(() => {
+    setEditing(true);
+    onFocus?.();
+  }, [onFocus]);
+
+  useEffect(() => {
+    if (editing && divRef.current) {
+      divRef.current.focus();
+      // Place cursor at end
+      const range = document.createRange();
+      const sel = window.getSelection();
+      if (divRef.current.childNodes.length > 0) {
+        range.selectNodeContents(divRef.current);
+        range.collapse(false);
+      }
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }
+  }, [editing]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleBlur();
-    }
-    if (e.key === 'Escape') {
-      setValue(content);
-      setIsEditing(false);
+    if (editing) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        // Revert
+        if (divRef.current) divRef.current.innerHTML = content;
+        setEditing(false);
+      }
+      // Bold
+      if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+        e.preventDefault();
+        document.execCommand('bold');
+      }
+      // Underline
+      if ((e.metaKey || e.ctrlKey) && e.key === 'u') {
+        e.preventDefault();
+        document.execCommand('underline');
+      }
+      // Tab to move to next cell
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        commitEdit();
+        onNavigate?.(e.shiftKey ? 'left' : 'right');
+      }
+    } else {
+      // Not editing
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        startEditing();
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        onNavigate?.('up');
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        onNavigate?.('down');
+      }
+      if (e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey)) {
+        e.preventDefault();
+        onNavigate?.('left');
+      }
+      if (e.key === 'ArrowRight' || (e.key === 'Tab' && !e.shiftKey)) {
+        e.preventDefault();
+        onNavigate?.('right');
+      }
     }
   };
 
-  if (isHeader) {
-    const style = columnLabel ? COLUMN_STYLES[columnLabel] || 'text-foreground' : 'text-foreground';
-    return (
-      <div className={`px-3 py-3 font-medium text-sm border-b-2 bg-card text-center ${style} transition-colors`}>
-        {columnLabel}
-      </div>
-    );
-  }
+  const colorClass = color ? COLOR_BG[color] ?? '' : '';
 
-  if (isEditing) {
+  if (editing) {
     return (
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        className="w-full h-full p-1 border-2 border-accent focus:outline-none resize-none bg-background text-foreground"
-        style={{ minHeight: '28px', fontSize: 'var(--cell-font-size, 16px)' }}
-      />
+      <div className={`relative border border-accent ${colorClass}`}>
+        <div
+          ref={divRef}
+          contentEditable
+          suppressContentEditableWarning
+          dangerouslySetInnerHTML={{ __html: content }}
+          onBlur={commitEdit}
+          onKeyDown={handleKeyDown}
+          className="w-full min-h-[28px] p-1 focus:outline-none text-foreground bg-background/80"
+          style={{ fontSize: 'var(--cell-font-size, 14px)' }}
+        />
+        {/* Color picker strip */}
+        {onColorChange && (
+          <div className="absolute -top-6 right-0 flex gap-0.5 bg-card border border-card-04 rounded shadow-sm p-0.5 z-20">
+            {(['yellow', 'green', 'blue', null] as CellColor[]).map((c) => (
+              <button
+                key={c ?? 'none'}
+                onMouseDown={(e) => {
+                  e.preventDefault(); // Don't steal focus
+                  onColorChange(c);
+                }}
+                className={`w-5 h-5 rounded text-[10px] flex items-center justify-center transition-colors ${
+                  c === null
+                    ? 'bg-card-02 hover:bg-card-03'
+                    : c === 'yellow'
+                    ? 'bg-yellow-300'
+                    : c === 'green'
+                    ? 'bg-green-300'
+                    : 'bg-blue-300'
+                } ${color === c ? 'ring-1 ring-accent' : ''}`}
+                title={c ?? 'No color'}
+              >
+                {c === null ? 'x' : ''}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     );
   }
 
   return (
     <div
-      onClick={() => setIsEditing(true)}
-      className="w-full h-full p-1 border border-card-04 hover:bg-card-01 cursor-text whitespace-pre-wrap break-words text-foreground transition-colors"
-      style={{ minHeight: '28px', fontSize: 'var(--cell-font-size, 16px)' }}
-    >
-      {content || '\u00A0'}
-    </div>
+      ref={wrapperRef}
+      tabIndex={0}
+      onClick={startEditing}
+      onFocus={onFocus}
+      onKeyDown={handleKeyDown}
+      className={`w-full min-h-[28px] p-1 border border-card-04 hover:bg-card-01 cursor-text whitespace-pre-wrap break-words text-foreground transition-colors ${colorClass} ${
+        focused ? 'ring-1 ring-accent/50' : ''
+      }`}
+      style={{ fontSize: 'var(--cell-font-size, 14px)' }}
+      dangerouslySetInnerHTML={{ __html: content || '&nbsp;' }}
+    />
   );
 }
-

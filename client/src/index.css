@@ -28,19 +28,47 @@
 
 @layer base {
   :root {
-    --cell-font-size: 16px;
+    --cell-font-size: 14px;
   }
 
   body {
     background-color: rgb(var(--bg));
     color: rgb(var(--fg));
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-      sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+      Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  /* Ensure contentEditable cells have sensible defaults */
+  [contenteditable] {
+    outline: none;
+  }
+
+  [contenteditable] b,
+  [contenteditable] strong {
+    font-weight: 700;
+  }
+
+  [contenteditable] u {
+    text-decoration: underline;
+  }
+
+  [contenteditable] mark {
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+
+  mark[data-color="yellow"] {
+    background-color: rgba(250, 204, 21, 0.4);
+  }
+
+  mark[data-color="green"] {
+    background-color: rgba(74, 222, 128, 0.4);
+  }
+
+  mark[data-color="blue"] {
+    background-color: rgba(96, 165, 250, 0.4);
+  }
 }
-
-

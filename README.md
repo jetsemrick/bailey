@@ -1,79 +1,65 @@
-# Debate Flow Application
+# Bailey
 
-A web-based application for judging policy debates with organized note-taking (flowing), timer, and document preview capabilities.
+A cross-platform web application for competitive policy debate flowing. Replaces legacy tools like Microsoft Word and Excel with a purpose-built interface that works on macOS, Windows, and tablets.
 
 ## Features
 
-- **Flow Grid**: 7-column grid for debate speeches (1AC, 1NC, 2AC, Block, 1AR, 2NR, 2AR)
-- **Multiple Sheets**: Create, rename, and manage multiple flow sheets per debate
-- **Auto-save**: Cell changes are automatically saved to the backend
-- **Color-coded Columns**: Visual distinction between affirmative and negative speeches
+- **Flow Grid**: 8-column grid for all policy debate speeches (1AC through 2AR)
+- **Cell Formatting**: Bold, underline, and color highlighting (yellow, green, blue)
+- **Drag and Drop**: Reorder arguments vertically or align responses across columns
+- **Tab Management**: Multiple flow tabs per round (one per position)
+- **Tournament/Round Organization**: Hierarchical tournament > round > flow structure
+- **Speech Timer**: Countdown timer with presets for constructives, rebuttals, cross-ex, and prep time
+- **Import/Export**: Back up and restore tournament data as JSON
+- **Keyboard Navigation**: Arrow keys, Tab, Enter/Escape, undo/redo (Ctrl+Z)
+- **Authentication**: User accounts via Supabase Auth with Row Level Security
 
 ## Tech Stack
 
-- **Frontend**: React 18, TypeScript, Vite, TailwindCSS
-- **Backend**: Supabase (PostgreSQL database with auto-generated REST API)
-
-## Prerequisites
-
-- Bun (recommended) or Node.js 18+
-- Supabase account (project already set up)
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS
+- **Backend**: Supabase (PostgreSQL + Auth + Row Level Security)
+- **Package Manager**: Bun
 
 ## Setup
 
-1. **Install dependencies**:
-```bash
-bun install
+### 1. Supabase Project
+
+Create a Supabase project at [supabase.com](https://supabase.com), then run the SQL in `client/src/db/schema.sql` in the Supabase SQL Editor to create the database tables and policies.
+
+### 2. Environment Variables
+
+Create `client/.env`:
+
+```
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-2. **Set up environment variables**:
-   - Copy `client/.env.example` to `client/.env`
-   - The Supabase credentials are already configured for the "Bailey" project
+### 3. Install and Run
 
-3. **Start the development server**:
 ```bash
+bun install
 bun run dev
 ```
 
-This runs both the client and server (workspaces) in watch mode.
-   
-If you only want one workspace:
-
-```bash
-bun --cwd client run dev
-```
-
-```bash
-bun --cwd server run dev
-```
+The app runs at `http://localhost:3000`.
 
 ## Project Structure
 
 ```
-bailey/
-├── client/          # React frontend
-│   ├── src/
-│   │   ├── components/  # React components
-│   │   ├── hooks/       # Custom React hooks
-│   │   ├── api/         # Supabase API client
-│   │   └── lib/          # Supabase client setup
-└── package.json     # Root workspace config
+client/src/
+  auth/       # Authentication context, login/signup pages
+  db/         # Supabase client, API layer, types, schema SQL
+  hooks/      # React hooks (tournaments, rounds, flow grid, timer, undo/redo)
+  components/ # Reusable UI components
+  pages/      # Route-level page components
 ```
 
 ## Database Schema
 
-The Supabase database includes three tables:
-- `flows` - Debate flow documents
-- `sheets` - Individual sheets within a flow
-- `cells` - Individual cells within a sheet
+Four tables with Row Level Security:
 
-All tables have Row Level Security (RLS) enabled with permissive policies for now.
-
-## Development
-
-- Dev (client + server): `bun run dev`
-- Client only: `bun --cwd client run dev`
-- Server only: `bun --cwd server run dev`
-- Database management: Use Supabase Dashboard at https://supabase.com/dashboard
-
-
+- `tournaments` - Competition events
+- `rounds` - Individual debates within a tournament
+- `flow_tabs` - Position flows within a round (tabs)
+- `flow_cells` - Argument entries within a flow grid

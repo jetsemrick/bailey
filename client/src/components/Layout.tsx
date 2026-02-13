@@ -1,87 +1,104 @@
-import { ReactNode, useState, useEffect, useRef } from 'react';
+import { type ReactNode, useState, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
 import Settings from './Settings';
+
+interface Breadcrumb {
+  label: string;
+  to?: string;
+}
 
 interface LayoutProps {
   children: ReactNode;
-  onGoHome?: () => void;
-  flowName?: string;
-  onRenameFlow?: (name: string) => void;
+  breadcrumbs?: Breadcrumb[];
 }
 
-export default function Layout({ children, onGoHome, flowName, onRenameFlow }: LayoutProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(flowName || '');
-  const inputRef = useRef<HTMLInputElement>(null);
+export default function Layout({ children, breadcrumbs }: LayoutProps) {
+  const { user, signOut } = useAuth();
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const location = useLocation();
 
+  // Close menu on route change
   useEffect(() => {
-    setEditValue(flowName || '');
-  }, [flowName]);
-
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [isEditing]);
-
-  const handleBlur = () => {
-    setIsEditing(false);
-    if (editValue.trim() && editValue !== flowName && onRenameFlow) {
-      onRenameFlow(editValue.trim());
-    } else {
-      setEditValue(flowName || '');
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleBlur();
-    } else if (e.key === 'Escape') {
-      setIsEditing(false);
-      setEditValue(flowName || '');
-    }
-  };
+    setShowUserMenu(false);
+  }, [location.pathname]);
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground">
-      <header className="bg-card border-b border-card-04 px-4 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h1 
-            className={`text-xl font-semibold tracking-tight ${onGoHome ? 'cursor-pointer hover:opacity-80' : ''}`}
-            onClick={onGoHome}
+      {/* Header */}
+      <header className="bg-card border-b border-card-04 px-4 h-12 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <Link
+            to="/"
+            className="text-lg font-bold tracking-tight hover:opacity-80 transition-opacity shrink-0"
           >
             Bailey
-          </h1>
-          {flowName && (
-            <>
-              <span className="text-foreground/20 text-xl">/</span>
-              {isEditing ? (
-                <input
-                  ref={inputRef}
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  onBlur={handleBlur}
-                  onKeyDown={handleKeyDown}
-                  className="bg-card border border-accent rounded px-2 py-1 text-sm font-medium focus:outline-none min-w-[200px]"
-                />
-              ) : (
-                <span 
-                  className="text-sm font-medium hover:bg-card-02 px-2 py-1 rounded cursor-text transition-colors"
-                  onClick={() => setIsEditing(true)}
-                  title="Click to rename"
+          </Link>
+          {breadcrumbs?.map((bc, i) => (
+            <span key={i} className="flex items-center gap-2 min-w-0">
+              <span className="text-foreground/20">/</span>
+              {bc.to ? (
+                <Link
+                  to={bc.to}
+                  className="text-sm font-medium hover:text-accent truncate transition-colors"
                 >
-                  {flowName}
-                </span>
+                  {bc.label}
+                </Link>
+              ) : (
+                <span className="text-sm font-medium truncate">{bc.label}</span>
               )}
-            </>
+            </span>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <Settings />
+          {user && (
+            <div className="relative">
+              <button
+                onClick={() => setShowUserMenu((v) => !v)}
+                className="p-2 rounded hover:bg-card-02 transition-colors text-sm text-foreground/60"
+                title={user.email ?? 'Account'}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              </button>
+              {showUserMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowUserMenu(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-card-04 rounded-lg shadow-lg py-1 min-w-[180px]">
+                    <div className="px-3 py-2 text-xs text-foreground/50 border-b border-card-04 truncate">
+                      {user.email}
+                    </div>
+                    <button
+                      onClick={signOut}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-card-02 transition-colors"
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
-        <Settings />
       </header>
-      <main className="flex-1 overflow-hidden flex flex-col">
-        {children}
-      </main>
+      {/* Main content */}
+      <main className="flex-1 overflow-hidden flex flex-col">{children}</main>
     </div>
   );
 }
-

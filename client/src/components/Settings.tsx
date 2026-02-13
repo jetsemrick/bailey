@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 
 const FONT_SIZE_KEY = 'bailey-font-size';
-const DEFAULT_FONT_SIZE = 16;
-const MIN_FONT_SIZE = 6;
+const DEFAULT_FONT_SIZE = 14;
+const MIN_FONT_SIZE = 8;
 const MAX_FONT_SIZE = 24;
 
 export default function Settings() {
@@ -23,10 +23,10 @@ export default function Settings() {
   }, []);
 
   const handleFontSizeChange = (size: number) => {
-    const clampedSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, size));
-    setFontSize(clampedSize);
-    localStorage.setItem(FONT_SIZE_KEY, clampedSize.toString());
-    document.documentElement.style.setProperty('--cell-font-size', `${clampedSize}px`);
+    const clamped = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, size));
+    setFontSize(clamped);
+    localStorage.setItem(FONT_SIZE_KEY, clamped.toString());
+    document.documentElement.style.setProperty('--cell-font-size', `${clamped}px`);
   };
 
   return (
@@ -35,19 +35,18 @@ export default function Settings() {
         onClick={() => setIsOpen(true)}
         className="p-2 rounded hover:bg-card-02 transition-colors"
         title="Settings"
-        aria-label="Open settings"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          width="20"
-          height="20"
+          width="18"
+          height="18"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="text-foreground"
+          className="text-foreground/60"
         >
           <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
           <circle cx="12" cy="12" r="3" />
@@ -56,75 +55,37 @@ export default function Settings() {
 
       {isOpen && (
         <>
-          <div
-            className="fixed inset-0 bg-black/20 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card border border-card-04 rounded-lg shadow-lg z-50 p-6 min-w-[320px]">
+          <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setIsOpen(false)} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card border border-card-04 rounded-lg shadow-lg z-50 p-6 min-w-[300px]">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Settings</h2>
+              <h2 className="text-base font-semibold">Settings</h2>
               <button
                 onClick={() => setIsOpen(false)}
                 className="p-1 rounded hover:bg-card-02 transition-colors"
-                aria-label="Close settings"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18" />
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
             </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Font Size: {fontSize}px
-                </label>
-                <div className="flex items-center gap-4">
-                  <input
-                    type="range"
-                    min={MIN_FONT_SIZE}
-                    max={MAX_FONT_SIZE}
-                    value={fontSize}
-                    onChange={(e) => handleFontSizeChange(parseInt(e.target.value, 10))}
-                    className="flex-1"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleFontSizeChange(fontSize - 1)}
-                      disabled={fontSize <= MIN_FONT_SIZE}
-                      className="px-3 py-1 bg-card-02 rounded hover:bg-card-03 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                      aria-label="Decrease font size"
-                    >
-                      −
-                    </button>
-                    <button
-                      onClick={() => handleFontSizeChange(DEFAULT_FONT_SIZE)}
-                      className="px-3 py-1 bg-card-02 rounded hover:bg-card-03 transition-colors text-sm"
-                      aria-label="Reset font size"
-                    >
-                      Reset
-                    </button>
-                    <button
-                      onClick={() => handleFontSizeChange(fontSize + 1)}
-                      disabled={fontSize >= MAX_FONT_SIZE}
-                      className="px-3 py-1 bg-card-02 rounded hover:bg-card-03 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                      aria-label="Increase font size"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Cell Font Size: {fontSize}px</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={MIN_FONT_SIZE}
+                  max={MAX_FONT_SIZE}
+                  value={fontSize}
+                  onChange={(e) => handleFontSizeChange(parseInt(e.target.value, 10))}
+                  className="flex-1"
+                />
+                <button
+                  onClick={() => handleFontSizeChange(DEFAULT_FONT_SIZE)}
+                  className="px-2 py-1 text-xs bg-card-02 rounded hover:bg-card-03 transition-colors"
+                >
+                  Reset
+                </button>
               </div>
             </div>
           </div>
@@ -133,4 +94,3 @@ export default function Settings() {
     </>
   );
 }
-
