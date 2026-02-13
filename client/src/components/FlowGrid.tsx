@@ -76,10 +76,14 @@ function SortableCell({
 
 // ── Single column ────────────────────────────────────────────
 
+/** The first column index for each initiated_by side */
+const FIRST_COLUMN: Record<'aff' | 'neg', number> = { aff: 0, neg: 1 };
+
 function FlowColumn({
   colIdx,
   label,
   rowCount,
+  initiatedBy,
   getCellContent,
   getCellColor,
   onCellUpdate,
@@ -91,6 +95,7 @@ function FlowColumn({
   colIdx: number;
   label: string;
   rowCount: number;
+  initiatedBy: 'aff' | 'neg' | null;
   getCellContent: (col: number, row: number) => string;
   getCellColor: (col: number, row: number) => CellColor;
   onCellUpdate: (col: number, row: number, content: string) => void;
@@ -100,6 +105,7 @@ function FlowColumn({
   onNavigate: (from: { col: number; row: number }, dir: 'up' | 'down' | 'left' | 'right') => void;
 }) {
   const side = COLUMN_SIDES[label];
+  const isStartColumn = initiatedBy !== null && colIdx === FIRST_COLUMN[initiatedBy];
   const items = useMemo(
     () => Array.from({ length: rowCount }, (_, r) => `${colIdx}:${r}`),
     [colIdx, rowCount]
@@ -109,9 +115,14 @@ function FlowColumn({
     <div className="flex flex-col flex-1 min-w-[100px] border-r border-card-04 last:border-r-0">
       {/* Header */}
       <div
-        className={`sticky top-0 z-10 px-2 py-1.5 text-xs font-semibold text-center border-b border-card-04 bg-card ${COLUMN_COLORS[side]}`}
+        className={`sticky top-0 z-10 px-2 py-1.5 text-xs font-semibold text-center border-b border-card-04 bg-card ${COLUMN_COLORS[side]} ${
+          isStartColumn ? 'border-b-2 border-b-accent' : ''
+        }`}
       >
         {label}
+        {isStartColumn && (
+          <span className="block text-[9px] font-normal text-accent/70 leading-tight">start</span>
+        )}
       </div>
       {/* Sortable cells */}
       <SortableContext items={items} strategy={verticalListSortingStrategy}>
@@ -139,7 +150,7 @@ function FlowColumn({
 
 export default function FlowGrid({ grid }: FlowGridProps) {
   const {
-    activeFlowId, getCellContent, getCellColor, updateCell, updateCellColor,
+    activeFlowId, activeFlow, getCellContent, getCellColor, updateCell, updateCellColor,
     getColumnRowCount, bulkUpdateCells,
   } = grid;
 
@@ -302,6 +313,7 @@ export default function FlowGrid({ grid }: FlowGridProps) {
               colIdx={colIdx}
               label={label}
               rowCount={maxRows}
+              initiatedBy={activeFlow?.initiated_by ?? null}
               getCellContent={getCellContent}
               getCellColor={getCellColor}
               onCellUpdate={handleCellUpdate}
