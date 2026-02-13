@@ -92,10 +92,7 @@ export function useFlowGrid(roundId: string | undefined) {
       if (dirtyRef.current.size > 0 && activeFlowId) {
         const toSave = Array.from(dirtyRef.current.values());
         dirtyRef.current.clear();
-        // Use sendBeacon for reliable delivery during unload
-        const payload = JSON.stringify({ flowId: activeFlowId, cells: toSave });
-        navigator.sendBeacon?.('/api/flush', payload);
-        // Also try synchronous flush (may not complete)
+        // Best-effort flush on unload (may not complete for async)
         api.upsertCells(activeFlowId, toSave).catch(() => {});
       }
     };
