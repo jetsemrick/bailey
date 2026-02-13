@@ -86,13 +86,42 @@ export function useFlowGrid(roundId: string | undefined) {
     timerRef.current = setTimeout(flush, DEBOUNCE_MS);
   }, [flush]);
 
-  // Flush on unmount
+  // Flush pending changes before page unload
   useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      // Fire synchronously isn't possible, but the ref captures last state
+    const handleBeforeUnload = () => {
+      if (dirtyRef.current.size > 0 && activeFlowId) {
+        const toSave = Array.from(dirtyRef.current.values());
+        dirtyRef.current.clear();
+        // Use sendBeacon for reliable delivery during unload
+        const payload = JSON.stringify({ flowId: activeFlowId, cells: toSave });
+        navigator.sendBeacon?.('/api/flush', payload);
+        // Also try synchronous flush (may not complete)
+        api.upsertCells(activeFlowId, toSave).catch(() => {});
+      }
     };
-  }, []);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [activeFlowId]);
+
+  // Flush when switching flow tabs (activeFlowId changes)
+  const prevFlowIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevFlowIdRef.current && prevFlowIdRef.current !== activeFlowId) {
+      // Flush dirty cells from the previous flow
+      if (dirtyRef.current.size > 0) {
+        const prevId = prevFlowIdRef.current;
+        const toSave = Array.from(dirtyRef.current.values());
+        dirtyRef.current.clear();
+        api.upsertCells(prevId, toSave).catch((err) => {
+          setError(err instanceof Error ? err.message : 'Failed to save cells');
+        });
+      }
+    }
+    prevFlowIdRef.current = activeFlowId;
+  }, [activeFlowId]);
 
   // Manual save (Ctrl+S)
   const saveNow = useCallback(async () => {
