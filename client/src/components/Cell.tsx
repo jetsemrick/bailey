@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import type { CellColor } from '../db/types';
 
 const COLOR_BG: Record<string, string> = {
@@ -45,50 +45,32 @@ export default function Cell({
   content,
   color,
   onUpdate,
-  onColorChange,
   focused,
   onFocus,
   onNavigate,
 }: CellProps) {
-  const [editing, setEditing] = useState(false);
   const divRef = useRef<HTMLDivElement>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Focus management
+  // Focus and place caret at end when this cell becomes active
   useEffect(() => {
-    if (focused && !editing && wrapperRef.current) {
-      wrapperRef.current.focus();
+    if (focused && divRef.current) {
+      divRef.current.focus();
+      const range = document.createRange();
+      const sel = window.getSelection();
+      range.selectNodeContents(divRef.current);
+      range.collapse(false);
+      sel?.removeAllRanges();
+      sel?.addRange(range);
     }
-  }, [focused, editing]);
+  }, [focused]);
 
   const commitEdit = useCallback(() => {
     if (!divRef.current) return;
     const newContent = sanitizeHtml(divRef.current.innerHTML);
-    setEditing(false);
     if (newContent !== content) {
       onUpdate(newContent);
     }
   }, [content, onUpdate]);
-
-  const startEditing = useCallback(() => {
-    setEditing(true);
-    onFocus?.();
-  }, [onFocus]);
-
-  useEffect(() => {
-    if (editing && divRef.current) {
-      divRef.current.focus();
-      // Place cursor at end
-      const range = document.createRange();
-      const sel = window.getSelection();
-      if (divRef.current.childNodes.length > 0) {
-        range.selectNodeContents(divRef.current);
-        range.collapse(false);
-      }
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-    }
-  }, [editing]);
 
   const applyInlineHighlight = useCallback(() => {
     const sel = window.getSelection();
@@ -132,116 +114,58 @@ export default function Cell({
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (editing) {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        // Revert
-        if (divRef.current) divRef.current.innerHTML = content;
-        setEditing(false);
-      }
-      // Bold
-      if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
-        e.preventDefault();
-        document.execCommand('bold');
-      }
-      // Underline
-      if ((e.metaKey || e.ctrlKey) && e.key === 'u') {
-        e.preventDefault();
-        document.execCommand('underline');
-      }
-      // Inline highlight: Ctrl+E cycles yellow -> green -> blue -> none
-      if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
-        e.preventDefault();
-        applyInlineHighlight();
-      }
-      // Tab to move to next cell
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        commitEdit();
-        onNavigate?.(e.shiftKey ? 'left' : 'right');
-      }
-    } else {
-      // Not editing
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        startEditing();
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        onNavigate?.('up');
-      }
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        onNavigate?.('down');
-      }
-      if (e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey)) {
-        e.preventDefault();
-        onNavigate?.('left');
-      }
-      if (e.key === 'ArrowRight' || (e.key === 'Tab' && !e.shiftKey)) {
-        e.preventDefault();
-        onNavigate?.('right');
-      }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (divRef.current) divRef.current.innerHTML = content;
+      return;
+    }
+    // Enter: commit and move down (Shift+Enter inserts newline)
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      commitEdit();
+      onNavigate?.('down');
+      return;
+    }
+    // Bold
+    if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+      e.preventDefault();
+      document.execCommand('bold');
+      return;
+    }
+    // Underline
+    if ((e.metaKey || e.ctrlKey) && e.key === 'u') {
+      e.preventDefault();
+      document.execCommand('underline');
+      return;
+    }
+    // Inline highlight: Ctrl+E cycles yellow -> green -> blue -> none
+    if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
+      e.preventDefault();
+      applyInlineHighlight();
+      return;
+    }
+    // Tab to move to next cell
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      commitEdit();
+      onNavigate?.(e.shiftKey ? 'left' : 'right');
+      return;
     }
   };
 
   const colorClass = color ? COLOR_BG[color] ?? '' : '';
 
-  if (editing) {
-    return (
-      <div className={`relative ring-2 ring-accent ring-inset ${colorClass}`}>
-        <div
-          ref={divRef}
-          contentEditable
-          suppressContentEditableWarning
-          dangerouslySetInnerHTML={{ __html: content }}
-          onBlur={commitEdit}
-          onKeyDown={handleKeyDown}
-          className="w-full min-h-[28px] p-1 focus:outline-none text-foreground bg-background/80"
-          style={{ fontSize: 'var(--cell-font-size, 14px)' }}
-        />
-        {/* Color picker strip */}
-        {onColorChange && (
-          <div className="absolute -top-6 right-0 flex gap-0.5 bg-card border border-card-04 rounded shadow-sm p-0.5 z-20">
-            {(['yellow', 'green', 'blue', null] as CellColor[]).map((c) => (
-              <button
-                key={c ?? 'none'}
-                onMouseDown={(e) => {
-                  e.preventDefault(); // Don't steal focus
-                  onColorChange(c);
-                }}
-                className={`w-5 h-5 rounded text-[10px] flex items-center justify-center transition-colors ${
-                  c === null
-                    ? 'bg-card-02 hover:bg-card-03'
-                    : c === 'yellow'
-                    ? 'bg-yellow-300'
-                    : c === 'green'
-                    ? 'bg-green-300'
-                    : 'bg-blue-300'
-                } ${color === c ? 'ring-1 ring-accent' : ''}`}
-                title={c ?? 'No color'}
-              >
-                {c === null ? 'x' : ''}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div
-      ref={wrapperRef}
-      tabIndex={0}
-      onClick={startEditing}
+      ref={divRef}
+      contentEditable
+      suppressContentEditableWarning
+      dangerouslySetInnerHTML={{ __html: content }}
       onFocus={onFocus}
+      onBlur={commitEdit}
       onKeyDown={handleKeyDown}
-      className={`w-full min-h-[28px] p-1 hover:bg-card-01 cursor-text whitespace-pre-wrap break-words text-foreground transition-colors ${colorClass} ${
-        focused ? 'ring-1 ring-accent/50' : ''
-      }`}
+      className={`w-full min-h-[28px] p-1 focus:outline-none cursor-text whitespace-pre-wrap break-words text-foreground ${colorClass}`}
       style={{ fontSize: 'var(--cell-font-size, 14px)' }}
-      dangerouslySetInnerHTML={{ __html: content || '&nbsp;' }}
     />
   );
 }

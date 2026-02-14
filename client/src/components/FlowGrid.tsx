@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -37,7 +37,8 @@ const COLUMN_SIDES: Record<string, 'aff' | 'neg'> = {
   '1NR': 'neg', '1AR': 'aff', '2NR': 'neg', '2AR': 'aff',
 };
 
-const MIN_ROWS = 8;
+const CELL_HEIGHT = 28; // matches min-h-[28px] on each cell
+const HEADER_HEIGHT = 36; // approximate column header height
 
 // ── Sortable cell wrapper ────────────────────────────────────
 
@@ -53,6 +54,10 @@ function SortableCell({
     attributes, listeners, setNodeRef, transform, transition, isDragging,
   } = useSortable({ id, data: { col, row } });
 
+  // Strip role and tabIndex from dnd-kit attributes so the Cell handles its
+  // own focus and keyboard events without the wrapper intercepting them.
+  const { role: _role, tabIndex: _tab, ...restAttributes } = attributes;
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -60,7 +65,7 @@ function SortableCell({
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="border-b border-card-04">
+    <div ref={setNodeRef} style={style} {...restAttributes} {...listeners}>
       <Cell
         content={content}
         color={color}
@@ -157,6 +162,19 @@ export default function FlowGrid({ grid }: FlowGridProps) {
   const undoRedo = useUndoRedo();
   const [focusedCell, setFocusedCell] = useState<{ col: number; row: number } | null>(null);
   const [dragItem, setDragItem] = useState<{ id: string; col: number; row: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerHeight, setContainerHeight] = useState(0);
+
+  // Track container height to fill viewport with rows
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      setContainerHeight(entry.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Clear undo/redo stack and focus when switching flow tabs
   useEffect(() => {
@@ -169,14 +187,18 @@ export default function FlowGrid({ grid }: FlowGridProps) {
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
   );
 
-  // Compute max rows across all columns
+  // Compute rows: fill available height, and always have at least 1 empty row beyond content
+  const minRowsFromHeight = containerHeight > 0
+    ? Math.ceil((containerHeight - HEADER_HEIGHT) / CELL_HEIGHT)
+    : 20;
+
   const maxRows = useMemo(() => {
-    let max = MIN_ROWS;
+    let contentMax = 0;
     for (let i = 0; i < 8; i++) {
-      max = Math.max(max, getColumnRowCount(i) + 1);
+      contentMax = Math.max(contentMax, getColumnRowCount(i) + 1);
     }
-    return max;
-  }, [getColumnRowCount, activeFlowId, grid.cells]);
+    return Math.max(contentMax, minRowsFromHeight);
+  }, [getColumnRowCount, activeFlowId, grid.cells, minRowsFromHeight]);
 
   // Cell update with undo tracking
   const handleCellUpdate = useCallback(
@@ -305,8 +327,8 @@ export default function FlowGrid({ grid }: FlowGridProps) {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex-1 overflow-auto">
-        <div className="flex min-w-[800px]">
+      <div ref={containerRef} className="flex-1 overflow-auto">
+        <div className="flex min-w-[800px] h-full">
           {SPEECH_COLUMNS.map((label, colIdx) => (
             <FlowColumn
               key={label}
