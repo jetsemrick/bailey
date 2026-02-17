@@ -34,9 +34,10 @@ export async function createTournament(
   fields: Pick<Tournament, 'name'> & Partial<Pick<Tournament, 'date' | 'location' | 'tournament_type' | 'team_name'>>
 ): Promise<Tournament> {
   const userId = await uid();
+  const { tournament_type: _t, team_name: _tn, ...dbFields } = fields;
   const { data, error } = await supabase
     .from('tournaments')
-    .insert({ user_id: userId, ...fields })
+    .insert({ user_id: userId, ...dbFields })
     .select()
     .single();
   if (error) throw error;
@@ -47,9 +48,10 @@ export async function updateTournament(
   id: string,
   fields: Partial<Pick<Tournament, 'name' | 'date' | 'location' | 'tournament_type' | 'team_name'>>
 ): Promise<Tournament> {
+  const { tournament_type: _t, team_name: _tn, ...dbFields } = fields;
   const { data, error } = await supabase
     .from('tournaments')
-    .update(fields)
+    .update(dbFields)
     .eq('id', id)
     .select()
     .single();

@@ -53,7 +53,7 @@ export default function TournamentPage() {
       setShowEditTournament(false);
     } catch (err) {
       console.error('Failed to update tournament:', err);
-      const msg = err instanceof Error ? err.message : 'Failed to update tournament';
+      const msg = (err as { message?: string })?.message ?? (err instanceof Error ? err.message : 'Failed to update tournament');
       alert(msg);
     }
   };

@@ -16,7 +16,7 @@ export default function HomePage() {
       navigate(`/tournament/${t.id}`, { state: { tournament_type: data.tournament_type, team_name: data.team_name } });
     } catch (err) {
       console.error('Failed to create tournament:', err);
-      const msg = err instanceof Error ? err.message : 'Failed to create tournament';
+      const msg = (err as { message?: string })?.message ?? (err instanceof Error ? err.message : 'Failed to create tournament');
       alert(msg);
     }
   };
