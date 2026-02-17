@@ -17,6 +17,8 @@ interface RoundNode {
 }
 
 interface SidebarProps {
+  /** When provided, only show rounds from this tournament */
+  tournamentId?: string;
   /** Currently active round ID (highlighted in tree) */
   activeRoundId?: string;
   /** Currently active flow ID (only this gets orange highlight) */
@@ -29,7 +31,7 @@ interface SidebarProps {
   onToggle: () => void;
 }
 
-export default function Sidebar({ activeRoundId, activeFlowId, activeRoundFlows, onFlowClick, collapsed, onToggle }: SidebarProps) {
+export default function Sidebar({ tournamentId, activeRoundId, activeFlowId, activeRoundFlows, onFlowClick, collapsed, onToggle }: SidebarProps) {
   const navigate = useNavigate();
   const [nodes, setNodes] = useState<RoundNode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,9 +39,10 @@ export default function Sidebar({ activeRoundId, activeFlowId, activeRoundFlows,
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const tournaments = await api.listTournaments();
       const roundNodes: RoundNode[] = [];
-      for (const t of tournaments) {
+      for (const t of tournamentId
+        ? [await api.getTournament(tournamentId)]
+        : await api.listTournaments()) {
         const rounds = await api.listRounds(t.id);
         for (const r of rounds) {
           const flows = await api.listFlows(r.id);
@@ -58,7 +61,7 @@ export default function Sidebar({ activeRoundId, activeFlowId, activeRoundFlows,
     } finally {
       setLoading(false);
     }
-  }, [activeRoundId]);
+  }, [tournamentId, activeRoundId]);
 
   useEffect(() => {
     load();

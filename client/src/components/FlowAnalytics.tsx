@@ -91,45 +91,11 @@ export default function FlowAnalytics({ flow, getCellContent, getColumnRowCount 
   }
 
   return (
-    <div className="flex-1 overflow-auto p-6 max-w-2xl mx-auto">
-      <h3 className="text-sm font-semibold text-foreground/60 uppercase tracking-wide mb-4">
-        Analytics
-      </h3>
-      <div className="grid grid-cols-4 gap-2 mb-6">
-        {analytics.map(({ label, side, words }) => (
-          <div
-            key={label}
-            className={`px-3 py-2 rounded border border-card-04 bg-card-01 ${
-              side === 'aff' ? 'border-l-2 border-l-blue-500' : 'border-l-2 border-l-red-500'
-            }`}
-          >
-            <div className="text-xs text-foreground/50">{label}</div>
-            <div className="text-lg font-mono font-semibold">{words} words</div>
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-3 gap-2 mb-6">
-        <div className="px-3 py-2 rounded border border-card-04 bg-card-01 border-l-2 border-l-blue-500">
-          <div className="text-xs text-foreground/50">Aff total</div>
-          <div className="text-lg font-mono font-semibold">{affWords} words</div>
-        </div>
-        <div className="px-3 py-2 rounded border border-card-04 bg-card-01 border-l-2 border-l-red-500">
-          <div className="text-xs text-foreground/50">Neg total</div>
-          <div className="text-lg font-mono font-semibold">{negWords} words</div>
-        </div>
-        <div className="px-3 py-2 rounded border border-card-04 bg-card-01">
-          <div className="text-xs text-foreground/50">Total</div>
-          <div className="text-lg font-mono font-semibold">{totalWords} words</div>
-        </div>
-      </div>
-
-      <h3 className="text-sm font-semibold text-foreground/60 uppercase tracking-wide mb-4">
-        Notes
-      </h3>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-xs font-medium text-foreground/60 mb-1">
-            Affirmative
+    <div className="flex-1 overflow-auto p-6 w-full mx-auto flex flex-col h-full">
+      <div className="flex-1 flex flex-col gap-6 min-h-0">
+        <div className="flex-1 flex flex-col min-h-0">
+          <label className="block text-sm font-semibold text-foreground/80 mb-2 uppercase tracking-wide">
+            Affirmative Notes
           </label>
           <textarea
             value={notesAff}
@@ -138,13 +104,13 @@ export default function FlowAnalytics({ flow, getCellContent, getColumnRowCount 
               scheduleSave();
             }}
             onBlur={saveNotes}
-            placeholder="Notes about the affirmative..."
-            className="w-full min-h-[120px] px-3 py-2 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm resize-y"
+            placeholder="Key arguments, strategy, feedback..."
+            className="flex-1 w-full p-4 rounded-lg border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm resize-none leading-relaxed"
           />
         </div>
-        <div>
-          <label className="block text-xs font-medium text-foreground/60 mb-1">
-            Negative
+        <div className="flex-1 flex flex-col min-h-0">
+          <label className="block text-sm font-semibold text-foreground/80 mb-2 uppercase tracking-wide">
+            Negative Notes
           </label>
           <textarea
             value={notesNeg}
@@ -153,8 +119,8 @@ export default function FlowAnalytics({ flow, getCellContent, getColumnRowCount 
               scheduleSave();
             }}
             onBlur={saveNotes}
-            placeholder="Notes about the negative..."
-            className="w-full min-h-[120px] px-3 py-2 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm resize-y"
+            placeholder="Key arguments, strategy, feedback..."
+            className="flex-1 w-full p-4 rounded-lg border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm resize-none leading-relaxed"
           />
         </div>
       </div>

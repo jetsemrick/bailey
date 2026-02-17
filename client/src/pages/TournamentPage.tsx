@@ -3,7 +3,6 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import RoundForm from '../components/RoundForm';
 import TournamentForm from '../components/TournamentForm';
-import ImportExport from '../components/ImportExport';
 import { useRounds } from '../hooks/useRounds';
 import * as api from '../db/api';
 import type { Tournament } from '../db/types';
@@ -88,7 +87,6 @@ export default function TournamentPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <ImportExport tournamentId={tournament.id} tournamentName={tournament.name} />
             <button
               onClick={() => setShowRoundForm(true)}
               className="px-4 py-1.5 bg-accent text-white rounded text-sm font-medium hover:bg-accent/90 transition-colors"
