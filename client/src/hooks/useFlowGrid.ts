@@ -4,7 +4,7 @@ import * as api from '../db/api';
 
 const DEBOUNCE_MS = 500;
 
-export function useFlowGrid(roundId: string | undefined, round?: Round | null) {
+export function useFlowGrid(roundId: string | undefined, _round?: Round | null) {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [cells, setCells] = useState<Map<string, FlowCell>>(new Map());
