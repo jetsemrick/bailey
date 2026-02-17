@@ -337,7 +337,7 @@ export default function FlowGrid({ grid }: FlowGridProps) {
         // Cross-column move
         const content = getCellContent(fromCol, fromRow);
         const color = getCellColor(fromCol, fromRow);
-        updateCell(fromCol, fromRow, '');
+        updateCell(fromCol, fromRow, '', null);
         updateCell(toCol, toRow, content, color);
       }
     },

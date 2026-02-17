@@ -1,11 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as api from '../db/api';
-import { SPEECH_COLUMNS, COLUMN_META } from '../db/types';
 import type { Flow } from '../db/types';
-
-function wordCount(text: string): number {
-  return text.trim() ? text.trim().split(/\s+/).length : 0;
-}
 
 interface FlowAnalyticsProps {
   flow: Flow;
@@ -13,7 +8,7 @@ interface FlowAnalyticsProps {
   getColumnRowCount: (col: number) => number;
 }
 
-export default function FlowAnalytics({ flow, getCellContent, getColumnRowCount }: FlowAnalyticsProps) {
+export default function FlowAnalytics({ flow }: FlowAnalyticsProps) {
   const [notesAff, setNotesAff] = useState('');
   const [notesNeg, setNotesNeg] = useState('');
   const [loading, setLoading] = useState(true);
@@ -60,27 +55,6 @@ export default function FlowAnalytics({ flow, getCellContent, getColumnRowCount 
       saveNotes();
     };
   }, [saveNotes]);
-
-  // Compute analytics from cells
-  const analytics = [];
-  let totalWords = 0;
-  let affWords = 0;
-  let negWords = 0;
-  for (let col = 0; col < 8; col++) {
-    const label = SPEECH_COLUMNS[col];
-    const meta = COLUMN_META[label];
-    let colWords = 0;
-    const rowCount = getColumnRowCount(col);
-    for (let row = 0; row < rowCount; row++) {
-      const content = getCellContent(col, row);
-      const w = wordCount(content);
-      colWords += w;
-      totalWords += w;
-      if (meta.side === 'aff') affWords += w;
-      else negWords += w;
-    }
-    analytics.push({ label, side: meta.side, words: colWords });
-  }
 
   if (loading) {
     return (

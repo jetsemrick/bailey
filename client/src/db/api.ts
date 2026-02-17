@@ -34,12 +34,9 @@ export async function createTournament(
   fields: Pick<Tournament, 'name'> & Partial<Pick<Tournament, 'date' | 'location' | 'tournament_type' | 'team_name'>>
 ): Promise<Tournament> {
   const userId = await uid();
-  // Omit tournament_type until migration 003 is applied (run 003_add_tournament_type.sql in Supabase)
-  // Omit team_name until migration 004 is applied (run 004_add_team_name_to_tournaments.sql in Supabase)
-  const { tournament_type: _t, team_name: _tn, ...dbFields } = fields;
   const { data, error } = await supabase
     .from('tournaments')
-    .insert({ user_id: userId, ...dbFields })
+    .insert({ user_id: userId, ...fields })
     .select()
     .single();
   if (error) throw error;
@@ -50,12 +47,9 @@ export async function updateTournament(
   id: string,
   fields: Partial<Pick<Tournament, 'name' | 'date' | 'location' | 'tournament_type' | 'team_name'>>
 ): Promise<Tournament> {
-  // Omit tournament_type until migration 003 is applied
-  // Omit team_name until migration 004 is applied
-  const { tournament_type: _t, team_name: _tn, ...dbFields } = fields;
   const { data, error } = await supabase
     .from('tournaments')
-    .update(dbFields)
+    .update(fields)
     .eq('id', id)
     .select()
     .single();

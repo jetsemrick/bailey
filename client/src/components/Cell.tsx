@@ -24,6 +24,7 @@ interface CellProps {
 function sanitizeHtml(html: string): string {
   const div = document.createElement('div');
   div.innerHTML = html;
+  const allowedColors = ['yellow', 'green', 'blue', ''];
   const walk = (node: Node): string => {
     if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
     if (node.nodeType !== Node.ELEMENT_NODE) return '';
@@ -33,7 +34,9 @@ function sanitizeHtml(html: string): string {
     if (tag === 'b' || tag === 'strong') return `<b>${children}</b>`;
     if (tag === 'u') return `<u>${children}</u>`;
     if (tag === 'mark') {
-      const color = el.getAttribute('data-color') || '';
+      const rawColor = el.getAttribute('data-color') || '';
+      // Only allow known color values to prevent attribute injection
+      const color = allowedColors.includes(rawColor) ? rawColor : '';
       return `<mark data-color="${color}">${children}</mark>`;
     }
     if (tag === 'br') return '\n';
@@ -159,12 +162,15 @@ export default function Cell({
   const colorClass = color ? COLOR_BG[color] ?? '' : '';
   const sideTextColor = side === 'aff' ? 'text-blue-600 dark:text-blue-400' : side === 'neg' ? 'text-red-600 dark:text-red-400' : 'text-foreground';
 
+  // Sanitize content on load to prevent XSS from imported/database content
+  const sanitizedContent = sanitizeHtml(content);
+
   return (
     <div
       ref={divRef}
       contentEditable
       suppressContentEditableWarning
-      dangerouslySetInnerHTML={{ __html: content }}
+      dangerouslySetInnerHTML={{ __html: sanitizedContent }}
       onFocus={onFocus}
       onBlur={commitEdit}
       onKeyDown={handleKeyDown}
