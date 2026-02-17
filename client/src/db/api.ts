@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { Tournament, Round, Flow, FlowCell, CellColor } from './types';
+import type { Tournament, Round, Flow, FlowCell, FlowAnalytics, CellColor } from './types';
 
 // ── helpers ──────────────────────────────────────────────────
 
@@ -31,12 +31,15 @@ export async function getTournament(id: string): Promise<Tournament> {
 }
 
 export async function createTournament(
-  fields: Pick<Tournament, 'name'> & Partial<Pick<Tournament, 'date' | 'location'>>
+  fields: Pick<Tournament, 'name'> & Partial<Pick<Tournament, 'date' | 'location' | 'tournament_type' | 'team_name'>>
 ): Promise<Tournament> {
   const userId = await uid();
+  // Omit tournament_type until migration 003 is applied (run 003_add_tournament_type.sql in Supabase)
+  // Omit team_name until migration 004 is applied (run 004_add_team_name_to_tournaments.sql in Supabase)
+  const { tournament_type: _t, team_name: _tn, ...dbFields } = fields;
   const { data, error } = await supabase
     .from('tournaments')
-    .insert({ user_id: userId, ...fields })
+    .insert({ user_id: userId, ...dbFields })
     .select()
     .single();
   if (error) throw error;
@@ -45,11 +48,14 @@ export async function createTournament(
 
 export async function updateTournament(
   id: string,
-  fields: Partial<Pick<Tournament, 'name' | 'date' | 'location'>>
+  fields: Partial<Pick<Tournament, 'name' | 'date' | 'location' | 'tournament_type' | 'team_name'>>
 ): Promise<Tournament> {
+  // Omit tournament_type until migration 003 is applied
+  // Omit team_name until migration 004 is applied
+  const { tournament_type: _t, team_name: _tn, ...dbFields } = fields;
   const { data, error } = await supabase
     .from('tournaments')
-    .update(fields)
+    .update(dbFields)
     .eq('id', id)
     .select()
     .single();
@@ -86,7 +92,7 @@ export async function getRound(id: string): Promise<Round> {
 
 export async function createRound(
   tournamentId: string,
-  fields: Partial<Pick<Round, 'round_number' | 'opponent' | 'side' | 'result'>>
+  fields: Partial<Pick<Round, 'round_number' | 'opponent' | 'team_aff' | 'team_neg' | 'side' | 'result'>>
 ): Promise<Round> {
   const userId = await uid();
   const { data, error } = await supabase
@@ -100,7 +106,7 @@ export async function createRound(
 
 export async function updateRound(
   id: string,
-  fields: Partial<Pick<Round, 'round_number' | 'opponent' | 'side' | 'result'>>
+  fields: Partial<Pick<Round, 'round_number' | 'opponent' | 'team_aff' | 'team_neg' | 'side' | 'result'>>
 ): Promise<Round> {
   const { data, error } = await supabase
     .from('rounds')
@@ -215,6 +221,35 @@ export async function deleteCellsByFlow(flowId: string): Promise<void> {
   if (error) throw error;
 }
 
+// ── Flow Analytics ───────────────────────────────────────────
+
+export async function getFlowAnalytics(flowId: string): Promise<FlowAnalytics | null> {
+  const { data, error } = await supabase
+    .from('flow_analytics')
+    .select('*')
+    .eq('flow_id', flowId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function upsertFlowAnalytics(
+  flowId: string,
+  fields: { notes_aff?: string; notes_neg?: string }
+): Promise<FlowAnalytics> {
+  const userId = await uid();
+  const { data, error } = await supabase
+    .from('flow_analytics')
+    .upsert(
+      { user_id: userId, flow_id: flowId, ...fields },
+      { onConflict: 'flow_id' }
+    )
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 // ── Export / Import helpers ──────────────────────────────────
 
 export type ExportedRoundData = Omit<Round, 'user_id'> & {
@@ -281,6 +316,8 @@ export async function importRound(
       tournament_id: tournamentId,
       round_number: data.round.round_number,
       opponent: data.round.opponent,
+      team_aff: data.round.team_aff ?? '',
+      team_neg: data.round.team_neg ?? '',
       side: data.round.side,
       result: data.round.result,
     })
@@ -330,6 +367,7 @@ export async function importTournament(data: ExportedTournament): Promise<string
       name: data.tournament.name,
       date: data.tournament.date,
       location: data.tournament.location,
+      tournament_type: (data.tournament as { tournament_type?: string }).tournament_type ?? 'competitor',
     })
     .select()
     .single();
@@ -343,6 +381,8 @@ export async function importTournament(data: ExportedTournament): Promise<string
         tournament_id: newTournament.id,
         round_number: round.round_number,
         opponent: round.opponent,
+        team_aff: round.team_aff ?? '',
+        team_neg: round.team_neg ?? '',
         side: round.side,
         result: round.result,
       })

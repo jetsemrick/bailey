@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Flow, FlowCell, CellColor } from '../db/types';
+import type { Flow, FlowCell, CellColor, Round } from '../db/types';
 import * as api from '../db/api';
 
 const DEBOUNCE_MS = 500;
 
-export function useFlowGrid(roundId: string | undefined) {
+export function useFlowGrid(roundId: string | undefined, round?: Round | null) {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [cells, setCells] = useState<Map<string, FlowCell>>(new Map());
@@ -230,19 +230,26 @@ export function useFlowGrid(roundId: string | undefined) {
 
   // -- Flow tab CRUD --
   const addFlow = useCallback(
-    async (positionName: string, initiatedBy: 'aff' | 'neg') => {
-      if (!roundId) return;
-      const order = flows.length;
-      const flow = await api.createFlow(roundId, {
-        position_name: positionName,
-        initiated_by: initiatedBy,
-        display_order: order,
-      });
-      setFlows((prev) => [...prev, flow]);
-      setActiveFlowId(flow.id);
+    async (initiatedBy: 'aff' | 'neg', count: number = 1) => {
+      if (!roundId || count < 1) return;
+      const baseOrder = flows.length;
+      const existingBySide = flows.filter((f) => f.initiated_by === initiatedBy).length;
+      const prefix = initiatedBy === 'aff' ? 'AFF' : 'NEG';
+      const created: Awaited<ReturnType<typeof api.createFlow>>[] = [];
+      for (let i = 0; i < count; i++) {
+        const positionName = `${prefix} ${existingBySide + i + 1}`;
+        const flow = await api.createFlow(roundId, {
+          position_name: positionName,
+          initiated_by: initiatedBy,
+          display_order: baseOrder + i,
+        });
+        created.push(flow);
+      }
+      setFlows((prev) => [...prev, ...created]);
+      setActiveFlowId(created[created.length - 1].id);
       setCells(new Map());
     },
-    [roundId, flows.length]
+    [roundId, flows]
   );
 
   const renameFlow = useCallback(async (id: string, name: string) => {

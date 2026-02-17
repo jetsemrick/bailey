@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import RoundForm from '../components/RoundForm';
 import TournamentForm from '../components/TournamentForm';
@@ -7,10 +7,14 @@ import ImportExport from '../components/ImportExport';
 import { useRounds } from '../hooks/useRounds';
 import * as api from '../db/api';
 import type { Tournament } from '../db/types';
+import { formatRoundName } from '../db/types';
 
 export default function TournamentPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const stateTournamentType = (location.state as { tournament_type?: 'judge' | 'competitor'; team_name?: string } | null)?.tournament_type;
+  const stateTeamName = (location.state as { team_name?: string } | null)?.team_name;
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [loadingT, setLoadingT] = useState(true);
   const { rounds, loading: loadingR, create, update, remove } = useRounds(id);
@@ -42,11 +46,17 @@ export default function TournamentPage() {
     await remove(roundId);
   };
 
-  const handleUpdateTournament = async (data: { name: string; date: string | null; location: string | null }) => {
+  const handleUpdateTournament = async (data: { name: string; date: string | null; location: string | null; tournament_type: 'judge' | 'competitor'; team_name?: string | null }) => {
     if (!id) return;
-    const updated = await api.updateTournament(id, data);
-    setTournament(updated);
-    setShowEditTournament(false);
+    try {
+      const updated = await api.updateTournament(id, data);
+      setTournament(updated);
+      setShowEditTournament(false);
+    } catch (err) {
+      console.error('Failed to update tournament:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to update tournament';
+      alert(msg);
+    }
   };
 
   if (loadingT) {
@@ -111,16 +121,18 @@ export default function TournamentPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">
-                    {r.opponent || <span className="text-foreground/40 italic">No opponent</span>}
+                    {formatRoundName(r, tournament.team_name ?? stateTeamName)}
                   </div>
-                  <div className="text-xs text-foreground/50">
-                    <span className={r.side === 'aff' ? 'text-blue-500' : 'text-red-500'}>
-                      {r.side === 'aff' ? 'Affirmative' : 'Negative'}
-                    </span>
-                  </div>
+                  {(tournament.tournament_type ?? stateTournamentType) !== 'judge' && (
+                    <div className="text-xs text-foreground/50">
+                      <span className={r.side === 'aff' ? 'text-blue-500' : 'text-red-500'}>
+                        {r.side === 'aff' ? 'Affirmative' : 'Negative'}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="w-10 text-center">
-                  {r.result && (
+                  {(tournament.tournament_type ?? stateTournamentType) !== 'judge' && r.result && (
                     <span
                       className={`text-sm font-bold ${
                         r.result === 'W' ? 'text-green-500' : 'text-red-500'
@@ -159,9 +171,18 @@ export default function TournamentPage() {
       {showRoundForm && (
         <RoundForm
           title="Add Round"
-          initial={{ round_number: rounds.length + 1, opponent: '', side: 'aff', result: null }}
+          initial={{
+            round_number: rounds.length + 1,
+            opponent: '',
+            team_aff: '',
+            team_neg: '',
+            side: 'aff',
+            result: null,
+          }}
           onSubmit={handleCreateRound}
           onCancel={() => setShowRoundForm(false)}
+          isJudgeMode={(tournament.tournament_type ?? stateTournamentType) === 'judge'}
+          teamName={tournament.team_name ?? stateTeamName ?? undefined}
         />
       )}
 
@@ -171,11 +192,15 @@ export default function TournamentPage() {
           initial={{
             round_number: editingRoundData.round_number,
             opponent: editingRoundData.opponent,
+            team_aff: editingRoundData.team_aff ?? '',
+            team_neg: editingRoundData.team_neg ?? '',
             side: editingRoundData.side,
             result: editingRoundData.result,
           }}
           onSubmit={(data) => handleUpdateRound(editingRoundData.id, data)}
           onCancel={() => setEditingRound(null)}
+          isJudgeMode={(tournament.tournament_type ?? stateTournamentType) === 'judge'}
+          teamName={tournament.team_name ?? stateTeamName ?? undefined}
         />
       )}
 
@@ -186,6 +211,8 @@ export default function TournamentPage() {
             name: tournament.name,
             date: tournament.date ?? '',
             location: tournament.location ?? '',
+            tournament_type: tournament.tournament_type ?? stateTournamentType ?? 'competitor',
+            team_name: tournament.team_name ?? '',
           }}
           onSubmit={handleUpdateTournament}
           onCancel={() => setShowEditTournament(false)}

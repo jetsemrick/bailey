@@ -23,6 +23,7 @@ export default function FlowTabs({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [dragId, setDragId] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; rect: DOMRect } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -55,10 +56,19 @@ export default function FlowTabs({
 
   const handleContextMenu = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
-    if (window.confirm('Delete this flow tab?')) {
-      onDelete(id);
-    }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setDeleteConfirm({ id, rect });
   };
+
+  useEffect(() => {
+    if (!deleteConfirm) return;
+    const close = () => setDeleteConfirm(null);
+    const t = setTimeout(() => window.addEventListener('click', close), 0);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('click', close);
+    };
+  }, [deleteConfirm]);
 
   // Simple drag reorder via native HTML drag
   const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -132,6 +142,34 @@ export default function FlowTabs({
       >
         +
       </button>
+
+      {deleteConfirm && (
+        <div
+          className="fixed z-50 bg-card border border-card-04 rounded shadow-lg py-1 min-w-[120px]"
+          style={{
+            left: deleteConfirm.rect.left + deleteConfirm.rect.width / 2,
+            top: deleteConfirm.rect.top - 4,
+            transform: 'translate(-50%, -100%)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              onDelete(deleteConfirm.id);
+              setDeleteConfirm(null);
+            }}
+            className="w-full px-3 py-1.5 text-left text-sm text-red-500 hover:bg-card-02 transition-colors"
+          >
+            Delete
+          </button>
+          <button
+            onClick={() => setDeleteConfirm(null)}
+            className="w-full px-3 py-1.5 text-left text-sm text-foreground hover:bg-card-02 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,49 +1,58 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../db/api';
-import type { Tournament, Round, Flow } from '../db/types';
+import type { Round, Flow } from '../db/types';
+import { formatRoundName } from '../db/types';
 
 interface FlowEntry {
   flow: Flow;
   round: Round;
 }
 
-interface TournamentNode {
-  tournament: Tournament;
+interface RoundNode {
+  round: Round;
   flows: FlowEntry[];
   expanded: boolean;
+  teamName?: string | null;
 }
 
 interface SidebarProps {
   /** Currently active round ID (highlighted in tree) */
   activeRoundId?: string;
+  /** Currently active flow ID (only this gets orange highlight) */
+  activeFlowId?: string | null;
+  /** Flows for the active round (overrides loaded data when renaming) */
+  activeRoundFlows?: Flow[];
+  /** Called when user clicks a flow (to switch tabs). Receives roundId and flowId. */
+  onFlowClick?: (roundId: string, flowId: string) => void;
   collapsed: boolean;
   onToggle: () => void;
 }
 
-export default function Sidebar({ activeRoundId, collapsed, onToggle }: SidebarProps) {
+export default function Sidebar({ activeRoundId, activeFlowId, activeRoundFlows, onFlowClick, collapsed, onToggle }: SidebarProps) {
   const navigate = useNavigate();
-  const [nodes, setNodes] = useState<TournamentNode[]>([]);
+  const [nodes, setNodes] = useState<RoundNode[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
       const tournaments = await api.listTournaments();
-      const treeNodes: TournamentNode[] = [];
+      const roundNodes: RoundNode[] = [];
       for (const t of tournaments) {
         const rounds = await api.listRounds(t.id);
-        const flowEntries: FlowEntry[] = [];
         for (const r of rounds) {
           const flows = await api.listFlows(r.id);
-          for (const f of flows) {
-            flowEntries.push({ flow: f, round: r });
-          }
+          const flowEntries: FlowEntry[] = flows.map((f) => ({ flow: f, round: r }));
+          roundNodes.push({
+            round: r,
+            flows: flowEntries,
+            expanded: r.id === activeRoundId,
+            teamName: t.team_name,
+          });
         }
-        const hasActive = rounds.some((r) => r.id === activeRoundId);
-        treeNodes.push({ tournament: t, flows: flowEntries, expanded: hasActive });
       }
-      setNodes(treeNodes);
+      setNodes(roundNodes);
     } catch {
       // Fail silently for sidebar
     } finally {
@@ -58,7 +67,7 @@ export default function Sidebar({ activeRoundId, collapsed, onToggle }: SidebarP
   const toggleExpand = (id: string) => {
     setNodes((prev) =>
       prev.map((n) =>
-        n.tournament.id === id ? { ...n, expanded: !n.expanded } : n
+        n.round.id === id ? { ...n, expanded: !n.expanded } : n
       )
     );
   };
@@ -82,7 +91,7 @@ export default function Sidebar({ activeRoundId, collapsed, onToggle }: SidebarP
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-card-04">
         <span className="text-xs font-semibold text-foreground/60 uppercase tracking-wide">
-          Tournaments
+          Rounds
         </span>
         <button
           onClick={onToggle}
@@ -101,13 +110,13 @@ export default function Sidebar({ activeRoundId, collapsed, onToggle }: SidebarP
           <div className="px-3 py-2 text-xs text-foreground/40">Loading...</div>
         )}
         {!loading && nodes.length === 0 && (
-          <div className="px-3 py-2 text-xs text-foreground/40">No tournaments</div>
+          <div className="px-3 py-2 text-xs text-foreground/40">No rounds</div>
         )}
-        {nodes.map(({ tournament: t, flows, expanded }) => (
-          <div key={t.id}>
-            {/* Tournament row */}
+        {nodes.map(({ round: r, flows, expanded, teamName }) => (
+          <div key={r.id}>
+            {/* Round row */}
             <button
-              onClick={() => toggleExpand(t.id)}
+              onClick={() => toggleExpand(r.id)}
               className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left hover:bg-card-01 transition-colors group"
             >
               <svg
@@ -126,38 +135,46 @@ export default function Sidebar({ activeRoundId, collapsed, onToggle }: SidebarP
               </svg>
               <span
                 className="text-xs font-medium truncate text-foreground/80 group-hover:text-foreground"
-                title={t.name}
+                title={formatRoundName(r, teamName)}
               >
-                {t.name}
+                {formatRoundName(r, teamName)}
               </span>
             </button>
 
             {/* Flow tabs */}
             {expanded && (
               <div className="ml-3">
-                {flows.length === 0 && (
-                  <div className="px-3 py-1 text-[11px] text-foreground/30 italic">
-                    No tabs
-                  </div>
-                )}
-                {flows.map(({ flow: f, round: r }) => (
+                {(() => {
+                  const displayFlows = r.id === activeRoundId && activeRoundFlows ? activeRoundFlows : flows.map((fe) => fe.flow);
+                  if (displayFlows.length === 0) {
+                    return (
+                      <div className="px-3 py-1 text-[11px] text-foreground/30 italic">
+                        No tabs
+                      </div>
+                    );
+                  }
+                  return displayFlows.map((f) => (
                   <button
                     key={f.id}
-                    onClick={() => navigate(`/round/${r.id}`)}
+                    onClick={() => {
+                      if (r.id === activeRoundId && onFlowClick) {
+                        onFlowClick(r.id, f.id);
+                      } else {
+                        navigate(`/round/${r.id}?flow=${f.id}`);
+                      }
+                    }}
                     className={`w-full flex items-center gap-1.5 px-3 py-1 text-left transition-colors rounded-sm ${
-                      r.id === activeRoundId
+                      f.id === activeFlowId
                         ? 'bg-accent/10 text-accent'
                         : 'text-foreground/60 hover:bg-card-01 hover:text-foreground'
                     }`}
                   >
-                    <span className="text-[11px] font-mono w-4 text-center shrink-0 text-foreground/30">
-                      {r.round_number}
-                    </span>
                     <span className="text-[11px] truncate">
                       {f.position_name}
                     </span>
                   </button>
-                ))}
+                  ));
+                })()}
               </div>
             )}
           </div>
@@ -169,7 +186,7 @@ export default function Sidebar({ activeRoundId, collapsed, onToggle }: SidebarP
         onClick={() => navigate('/')}
         className="px-3 py-2 border-t border-card-04 text-xs text-foreground/50 hover:text-foreground hover:bg-card-01 transition-colors text-left"
       >
-        View all tournaments
+        View all rounds
       </button>
     </div>
   );

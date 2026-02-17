@@ -2,6 +2,7 @@ import { type ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import Settings from './Settings';
+import Timer from './Timer';
 
 interface Breadcrumb {
   label: string;
@@ -54,6 +55,7 @@ export default function Layout({ children, breadcrumbs, headerActions }: LayoutP
         </div>
         <div className="flex items-center gap-2">
           {headerActions}
+          {location.pathname.startsWith('/round/') && <Timer />}
           <Settings />
           {user && (
             <div className="relative">

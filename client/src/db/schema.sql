@@ -8,6 +8,7 @@ DROP TABLE IF EXISTS sheets CASCADE;
 DROP TABLE IF EXISTS flows CASCADE;
 
 -- Drop new tables if re-running
+DROP TABLE IF EXISTS flow_analytics CASCADE;
 DROP TABLE IF EXISTS flow_cells CASCADE;
 DROP TABLE IF EXISTS flow_tabs CASCADE;
 DROP TABLE IF EXISTS rounds CASCADE;
@@ -23,6 +24,8 @@ CREATE TABLE tournaments (
   name text NOT NULL DEFAULT 'Untitled Tournament',
   date text,
   location text,
+  tournament_type text CHECK (tournament_type IN ('judge', 'competitor')) DEFAULT 'competitor',
+  team_name text,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
@@ -33,6 +36,8 @@ CREATE TABLE rounds (
   tournament_id uuid REFERENCES tournaments(id) ON DELETE CASCADE NOT NULL,
   round_number integer NOT NULL DEFAULT 1,
   opponent text DEFAULT '',
+  team_aff text DEFAULT '',
+  team_neg text DEFAULT '',
   side text CHECK (side IN ('aff', 'neg')) DEFAULT 'aff',
   result text CHECK (result IN ('W', 'L') OR result IS NULL),
   created_at timestamptz DEFAULT now(),
@@ -63,6 +68,16 @@ CREATE TABLE flow_cells (
   UNIQUE(flow_id, column_index, row_index)
 );
 
+CREATE TABLE flow_analytics (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  flow_id uuid REFERENCES flow_tabs(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  notes_aff text DEFAULT '',
+  notes_neg text DEFAULT '',
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
 -- ============================================================
 -- Indexes
 -- ============================================================
@@ -74,6 +89,8 @@ CREATE INDEX idx_flow_tabs_round ON flow_tabs(round_id);
 CREATE INDEX idx_flow_tabs_user ON flow_tabs(user_id);
 CREATE INDEX idx_flow_cells_flow ON flow_cells(flow_id);
 CREATE INDEX idx_flow_cells_user ON flow_cells(user_id);
+CREATE INDEX idx_flow_analytics_flow ON flow_analytics(flow_id);
+CREATE INDEX idx_flow_analytics_user ON flow_analytics(user_id);
 
 -- ============================================================
 -- Row Level Security
@@ -83,6 +100,7 @@ ALTER TABLE tournaments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rounds ENABLE ROW LEVEL SECURITY;
 ALTER TABLE flow_tabs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE flow_cells ENABLE ROW LEVEL SECURITY;
+ALTER TABLE flow_analytics ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users manage own tournaments" ON tournaments
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
@@ -94,6 +112,9 @@ CREATE POLICY "Users manage own flows" ON flow_tabs
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users manage own cells" ON flow_cells
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users manage own flow analytics" ON flow_analytics
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- ============================================================
@@ -119,3 +140,6 @@ CREATE TRIGGER flow_tabs_updated_at
 
 CREATE TRIGGER flow_cells_updated_at
   BEFORE UPDATE ON flow_cells FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER flow_analytics_updated_at
+  BEFORE UPDATE ON flow_analytics FOR EACH ROW EXECUTE FUNCTION update_updated_at();

@@ -1,33 +1,38 @@
 import { useState, type FormEvent } from 'react';
 
 interface NewFlowDialogProps {
-  onSubmit: (positionName: string, initiatedBy: 'aff' | 'neg') => void;
+  onSubmit: (initiatedBy: 'aff' | 'neg', count: number) => void;
   onCancel: () => void;
 }
 
 export default function NewFlowDialog({ onSubmit, onCancel }: NewFlowDialogProps) {
-  const [name, setName] = useState('');
+  const [count, setCount] = useState(1);
   const [side, setSide] = useState<'aff' | 'neg'>('aff');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    onSubmit(name.trim() || 'Untitled', side);
+    if (submitting) return;
+    setSubmitting(true);
+    onSubmit(side, Math.max(1, count));
   };
 
   return (
     <>
       <div className="fixed inset-0 bg-black/20 z-40" onClick={onCancel} />
       <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card border border-card-04 rounded-lg shadow-lg z-50 p-6 w-full max-w-xs">
-        <h2 className="text-base font-semibold mb-4">New Flow Tab</h2>
+        <h2 className="text-base font-semibold mb-4">Add Flow Tabs</h2>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="block text-sm font-medium mb-1">Position Name</label>
+            <label className="block text-sm font-medium mb-1">Number of Tabs</label>
             <input
               autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              type="number"
+              min={1}
+              max={20}
+              value={count}
+              onChange={(e) => setCount(Number(e.target.value))}
               className="w-full px-3 py-1.5 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm"
-              placeholder="e.g., Case, T, DA, CP, K"
             />
           </div>
           <div>
@@ -60,9 +65,10 @@ export default function NewFlowDialog({ onSubmit, onCancel }: NewFlowDialogProps
           <div className="flex gap-2 pt-2">
             <button
               type="submit"
-              className="flex-1 py-1.5 bg-accent text-white rounded text-sm font-medium hover:bg-accent/90 transition-colors"
+              disabled={submitting}
+              className="flex-1 py-1.5 bg-accent text-white rounded text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-60 disabled:pointer-events-none"
             >
-              Create
+              {count > 1 ? `Create ${count} Tabs` : 'Create Tab'}
             </button>
             <button
               type="button"

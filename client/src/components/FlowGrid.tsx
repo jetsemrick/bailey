@@ -37,15 +37,25 @@ const COLUMN_SIDES: Record<string, 'aff' | 'neg'> = {
   '1NR': 'neg', '1AR': 'aff', '2NR': 'neg', '2AR': 'aff',
 };
 
+/** Column config: label + data column index (0-7). Neg flows omit 1AC. */
+function getColumnsForFlow(initiatedBy: 'aff' | 'neg' | null): { label: string; dataCol: number }[] {
+  const all: { label: string; dataCol: number }[] = SPEECH_COLUMNS.map((label, i) => ({ label, dataCol: i }));
+  if (initiatedBy === 'neg') {
+    return all.filter((c) => c.label !== '1AC');
+  }
+  return all;
+}
+
 const CELL_HEIGHT = 28; // matches min-h-[28px] on each cell
 const HEADER_HEIGHT = 36; // approximate column header height
 
 // ── Sortable cell wrapper ────────────────────────────────────
 
 function SortableCell({
-  id, col, row, content, color, onUpdate, onColorChange, focused, onFocus, onNavigate,
+  id, col, row, content, color, side, onUpdate, onColorChange, focused, onFocus, onNavigate,
 }: {
   id: string; col: number; row: number; content: string; color: CellColor;
+  side: 'aff' | 'neg';
   onUpdate: (c: string) => void; onColorChange: (c: CellColor) => void;
   focused: boolean; onFocus: () => void;
   onNavigate: (d: 'up' | 'down' | 'left' | 'right') => void;
@@ -61,34 +71,44 @@ function SortableCell({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...restAttributes} {...listeners}>
+    <div ref={setNodeRef} style={style} {...restAttributes} className="relative">
       <Cell
-        content={content}
-        color={color}
+        content={isDragging ? '' : content}
+        color={isDragging ? null : color}
+        side={side}
         onUpdate={onUpdate}
         onColorChange={onColorChange}
         focused={focused}
         onFocus={onFocus}
         onNavigate={onNavigate}
       />
+      <div
+        {...listeners}
+        className="absolute bottom-0 right-0 w-6 h-6 flex items-center justify-center cursor-grab active:cursor-grabbing rounded-bl opacity-40 hover:opacity-70 transition-opacity"
+        title="Drag to reorder"
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" className="text-foreground">
+          <circle cx="9" cy="6" r="1.5" />
+          <circle cx="15" cy="6" r="1.5" />
+          <circle cx="9" cy="12" r="1.5" />
+          <circle cx="15" cy="12" r="1.5" />
+          <circle cx="9" cy="18" r="1.5" />
+          <circle cx="15" cy="18" r="1.5" />
+        </svg>
+      </div>
     </div>
   );
 }
 
 // ── Single column ────────────────────────────────────────────
 
-/** The first column index for each initiated_by side */
-const FIRST_COLUMN: Record<'aff' | 'neg', number> = { aff: 0, neg: 1 };
-
 function FlowColumn({
-  colIdx,
+  dataCol,
   label,
   rowCount,
-  initiatedBy,
   getCellContent,
   getCellColor,
   onCellUpdate,
@@ -97,10 +117,9 @@ function FlowColumn({
   onFocusCell,
   onNavigate,
 }: {
-  colIdx: number;
+  dataCol: number;
   label: string;
   rowCount: number;
-  initiatedBy: 'aff' | 'neg' | null;
   getCellContent: (col: number, row: number) => string;
   getCellColor: (col: number, row: number) => CellColor;
   onCellUpdate: (col: number, row: number, content: string) => void;
@@ -110,10 +129,10 @@ function FlowColumn({
   onNavigate: (from: { col: number; row: number }, dir: 'up' | 'down' | 'left' | 'right') => void;
 }) {
   const side = COLUMN_SIDES[label];
-  const isStartColumn = initiatedBy !== null && colIdx === FIRST_COLUMN[initiatedBy];
+  const isFocusedColumn = focusedCell?.col === dataCol;
   const items = useMemo(
-    () => Array.from({ length: rowCount }, (_, r) => `${colIdx}:${r}`),
-    [colIdx, rowCount]
+    () => Array.from({ length: rowCount }, (_, r) => `${dataCol}:${r}`),
+    [dataCol, rowCount]
   );
 
   return (
@@ -121,13 +140,10 @@ function FlowColumn({
       {/* Header */}
       <div
         className={`sticky top-0 z-10 px-2 py-1.5 text-xs font-semibold text-center border-b border-card-04 bg-card ${COLUMN_COLORS[side]} ${
-          isStartColumn ? 'border-b-2 border-b-accent' : ''
+          isFocusedColumn ? 'border-b-2 border-b-accent' : ''
         }`}
       >
         {label}
-        {isStartColumn && (
-          <span className="block text-[9px] font-normal text-accent/70 leading-tight">start</span>
-        )}
       </div>
       {/* Sortable cells */}
       <SortableContext items={items} strategy={verticalListSortingStrategy}>
@@ -135,15 +151,16 @@ function FlowColumn({
           <SortableCell
             key={itemId}
             id={itemId}
-            col={colIdx}
+            col={dataCol}
             row={rowIdx}
-            content={getCellContent(colIdx, rowIdx)}
-            color={getCellColor(colIdx, rowIdx)}
-            onUpdate={(c) => onCellUpdate(colIdx, rowIdx, c)}
-            onColorChange={(c) => onColorChange(colIdx, rowIdx, c)}
-            focused={focusedCell?.col === colIdx && focusedCell?.row === rowIdx}
-            onFocus={() => onFocusCell(colIdx, rowIdx)}
-            onNavigate={(d) => onNavigate({ col: colIdx, row: rowIdx }, d)}
+            content={getCellContent(dataCol, rowIdx)}
+            color={getCellColor(dataCol, rowIdx)}
+            side={side}
+            onUpdate={(c) => onCellUpdate(dataCol, rowIdx, c)}
+            onColorChange={(c) => onColorChange(dataCol, rowIdx, c)}
+            focused={focusedCell?.col === dataCol && focusedCell?.row === rowIdx}
+            onFocus={() => onFocusCell(dataCol, rowIdx)}
+            onNavigate={(d) => onNavigate({ col: dataCol, row: rowIdx }, d)}
           />
         ))}
       </SortableContext>
@@ -190,14 +207,15 @@ export default function FlowGrid({ grid }: FlowGridProps) {
   // Compute rows: fill available height, and always have at least 1 empty row beyond content
   const minRowsFromHeight = containerHeight > 0
     ? Math.ceil((containerHeight - HEADER_HEIGHT) / CELL_HEIGHT)
-    : 20;
+    : Math.ceil((typeof window !== 'undefined' ? window.innerHeight - 180 : 600) / CELL_HEIGHT);
 
   const maxRows = useMemo(() => {
     let contentMax = 0;
     for (let i = 0; i < 8; i++) {
       contentMax = Math.max(contentMax, getColumnRowCount(i) + 1);
     }
-    return Math.max(contentMax, minRowsFromHeight);
+    const minRows = Math.max(minRowsFromHeight, 35);
+    return Math.max(contentMax, minRows);
   }, [getColumnRowCount, activeFlowId, grid.cells, minRowsFromHeight]);
 
   // Cell update with undo tracking
@@ -253,17 +271,31 @@ export default function FlowGrid({ grid }: FlowGridProps) {
     return () => window.removeEventListener('keydown', handler);
   }, [undoRedo, updateCell, grid]);
 
+  // Columns for current flow (aff: 8 cols, neg: 7 cols, no 1AC)
+  const flowColumns = useMemo(
+    () => getColumnsForFlow(activeFlow?.initiated_by ?? null),
+    [activeFlow?.initiated_by]
+  );
+  const dataCols = useMemo(() => flowColumns.map((c) => c.dataCol), [flowColumns]);
+
   // Navigation
   const navigate = useCallback(
     (from: { col: number; row: number }, direction: 'up' | 'down' | 'left' | 'right') => {
       let { col, row } = from;
       if (direction === 'up') row = Math.max(0, row - 1);
       else if (direction === 'down') row = Math.min(maxRows - 1, row + 1);
-      else if (direction === 'left') col = Math.max(0, col - 1);
-      else if (direction === 'right') col = Math.min(7, col + 1);
+      else if (direction === 'left' || direction === 'right') {
+        const idx = dataCols.indexOf(col);
+        if (idx >= 0) {
+          const nextIdx = direction === 'left' ? idx - 1 : idx + 1;
+          if (nextIdx >= 0 && nextIdx < dataCols.length) {
+            col = dataCols[nextIdx];
+          }
+        }
+      }
       setFocusedCell({ col, row });
     },
-    [maxRows]
+    [maxRows, dataCols]
   );
 
   // DnD handlers
@@ -327,15 +359,14 @@ export default function FlowGrid({ grid }: FlowGridProps) {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div ref={containerRef} className="flex-1 overflow-auto">
+      <div ref={containerRef} className="flex-1 overflow-auto min-h-0">
         <div className="flex min-w-[800px] h-full">
-          {SPEECH_COLUMNS.map((label, colIdx) => (
+          {flowColumns.map(({ label, dataCol }) => (
             <FlowColumn
-              key={label}
-              colIdx={colIdx}
+              key={`${label}-${dataCol}`}
+              dataCol={dataCol}
               label={label}
               rowCount={maxRows}
-              initiatedBy={activeFlow?.initiated_by ?? null}
               getCellContent={getCellContent}
               getCellColor={getCellColor}
               onCellUpdate={handleCellUpdate}
@@ -348,7 +379,7 @@ export default function FlowGrid({ grid }: FlowGridProps) {
         </div>
       </div>
 
-      <DragOverlay>
+      <DragOverlay dropAnimation={null}>
         {dragItem && (
           <div className="bg-accent/10 border border-accent rounded p-1 text-sm opacity-80 max-w-[150px] truncate">
             {getCellContent(dragItem.col, dragItem.row) || '(empty)'}

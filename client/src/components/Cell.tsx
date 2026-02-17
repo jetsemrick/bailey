@@ -10,6 +10,8 @@ const COLOR_BG: Record<string, string> = {
 interface CellProps {
   content: string;
   color: CellColor;
+  /** Column side for text color: aff=blue, neg=red */
+  side?: 'aff' | 'neg';
   onUpdate: (content: string) => void;
   onColorChange?: (color: CellColor) => void;
   /** Whether this cell currently has keyboard focus */
@@ -44,6 +46,7 @@ function sanitizeHtml(html: string): string {
 export default function Cell({
   content,
   color,
+  side,
   onUpdate,
   focused,
   onFocus,
@@ -154,6 +157,7 @@ export default function Cell({
   };
 
   const colorClass = color ? COLOR_BG[color] ?? '' : '';
+  const sideTextColor = side === 'aff' ? 'text-blue-600 dark:text-blue-400' : side === 'neg' ? 'text-red-600 dark:text-red-400' : 'text-foreground';
 
   return (
     <div
@@ -164,7 +168,7 @@ export default function Cell({
       onFocus={onFocus}
       onBlur={commitEdit}
       onKeyDown={handleKeyDown}
-      className={`w-full min-h-[28px] p-1 focus:outline-none cursor-text whitespace-pre-wrap break-words text-foreground ${colorClass}`}
+      className={`w-full min-h-[28px] p-1 focus:outline-none cursor-text whitespace-pre-wrap break-words ${sideTextColor} ${colorClass}`}
       style={{ fontSize: 'var(--cell-font-size, 14px)' }}
     />
   );

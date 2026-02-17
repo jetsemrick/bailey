@@ -2,21 +2,22 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import TournamentForm from '../components/TournamentForm';
-import ImportExport from '../components/ImportExport';
 import { useTournaments } from '../hooks/useTournaments';
 
 export default function HomePage() {
-  const { tournaments, loading, create, remove, reload } = useTournaments();
+  const { tournaments, loading, create, remove } = useTournaments();
   const [showForm, setShowForm] = useState(false);
   const navigate = useNavigate();
 
-  const handleCreate = async (data: { name: string; date: string | null; location: string | null }) => {
+  const handleCreate = async (data: { name: string; date: string | null; location: string | null; tournament_type: 'judge' | 'competitor'; team_name?: string | null }) => {
     try {
       const t = await create(data);
       setShowForm(false);
-      navigate(`/tournament/${t.id}`);
+      navigate(`/tournament/${t.id}`, { state: { tournament_type: data.tournament_type, team_name: data.team_name } });
     } catch (err) {
       console.error('Failed to create tournament:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to create tournament';
+      alert(msg);
     }
   };
 
@@ -35,12 +36,6 @@ export default function HomePage() {
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold">Tournaments</h2>
           <div className="flex items-center gap-2">
-            <ImportExport
-              onImportComplete={(id) => {
-                reload();
-                navigate(`/tournament/${id}`);
-              }}
-            />
             <button
               onClick={() => setShowForm(true)}
               className="px-4 py-1.5 bg-accent text-white rounded text-sm font-medium hover:bg-accent/90 transition-colors"

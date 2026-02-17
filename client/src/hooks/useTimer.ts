@@ -1,52 +1,31 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 
-export type TimerPreset = 'constructive' | 'rebuttal' | 'crossex' | 'prep';
-
-const PRESET_SECONDS: Record<TimerPreset, number> = {
-  constructive: 8 * 60,
-  rebuttal: 5 * 60,
-  crossex: 3 * 60,
-  prep: 10 * 60,
-};
-
-export interface PrepTime {
-  aff: number; // remaining seconds
-  neg: number;
+export function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function useTimer() {
-  const [secondsLeft, setSecondsLeft] = useState(0);
-  const [totalSeconds, setTotalSeconds] = useState(0);
+/** Parse "8:00", "8", "8:30" into seconds. Returns 0 if invalid. */
+export function parseTimeInput(input: string): number {
+  const trimmed = input.trim();
+  if (!trimmed) return 0;
+  const parts = trimmed.split(':');
+  const m = parseInt(parts[0], 10) || 0;
+  const s = parts.length > 1 ? parseInt(parts[1], 10) || 0 : 0;
+  return Math.max(0, m * 60 + s);
+}
+
+export function useSingleTimer(initialSeconds: number) {
+  const [secondsLeft, setSecondsLeft] = useState(initialSeconds);
+  const [totalSeconds, setTotalSeconds] = useState(initialSeconds);
   const [running, setRunning] = useState(false);
   const [expired, setExpired] = useState(false);
-  const [activePreset, setActivePreset] = useState<TimerPreset | null>(null);
-  const [prepTime, setPrepTime] = useState<PrepTime>({ aff: 10 * 60, neg: 10 * 60 });
-  const [prepSide, setPrepSide] = useState<'aff' | 'neg'>('aff');
-
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-
-  // Refs so the tick callback always reads the latest values
-  const activePresetRef = useRef(activePreset);
-  const prepSideRef = useRef(prepSide);
-  const totalSecondsRef = useRef(totalSeconds);
-  activePresetRef.current = activePreset;
-  prepSideRef.current = prepSide;
-  totalSecondsRef.current = totalSeconds;
-
-  // Cleanup interval on unmount
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
 
   const playBeep = useCallback(() => {
     try {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new AudioContext();
-      }
-      const ctx = audioCtxRef.current;
+      const ctx = new AudioContext();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
@@ -68,23 +47,12 @@ export function useTimer() {
     setRunning(false);
   }, []);
 
-  // tick reads from refs so the setInterval callback is always current
   const tick = useCallback(() => {
     setSecondsLeft((prev) => {
       if (prev <= 1) {
         stop();
         setExpired(true);
         playBeep();
-
-        // Deduct from prep if active
-        if (activePresetRef.current === 'prep') {
-          const side = prepSideRef.current;
-          const total = totalSecondsRef.current;
-          setPrepTime((pt) => ({
-            ...pt,
-            [side]: Math.max(0, pt[side] - total),
-          }));
-        }
         return 0;
       }
       return prev - 1;
@@ -100,18 +68,7 @@ export function useTimer() {
 
   const pause = useCallback(() => {
     stop();
-    // If prep, deduct elapsed time
-    if (activePreset === 'prep') {
-      const elapsed = totalSeconds - secondsLeft;
-      if (elapsed > 0) {
-        setPrepTime((pt) => ({
-          ...pt,
-          [prepSide]: Math.max(0, pt[prepSide] - elapsed),
-        }));
-        setTotalSeconds(secondsLeft);
-      }
-    }
-  }, [stop, activePreset, prepSide, totalSeconds, secondsLeft]);
+  }, [stop]);
 
   const reset = useCallback(() => {
     stop();
@@ -119,42 +76,18 @@ export function useTimer() {
     setExpired(false);
   }, [stop, totalSeconds]);
 
-  const setPreset = useCallback(
-    (preset: TimerPreset) => {
-      stop();
-      setActivePreset(preset);
-      const secs = preset === 'prep' ? prepTime[prepSide] : PRESET_SECONDS[preset];
-      setTotalSeconds(secs);
-      setSecondsLeft(secs);
-      setExpired(false);
-    },
-    [stop, prepTime, prepSide]
-  );
+  const setTime = useCallback((seconds: number) => {
+    stop();
+    const secs = Math.max(0, seconds);
+    setTotalSeconds(secs);
+    setSecondsLeft(secs);
+    setExpired(false);
+  }, [stop]);
 
-  const setCustomTime = useCallback(
-    (seconds: number) => {
-      stop();
-      setActivePreset(null);
-      setTotalSeconds(seconds);
-      setSecondsLeft(seconds);
-      setExpired(false);
-    },
-    [stop]
-  );
-
-  const switchPrepSide = useCallback(
-    (side: 'aff' | 'neg') => {
-      setPrepSide(side);
-      if (activePreset === 'prep' && !running) {
-        setTotalSeconds(prepTime[side]);
-        setSecondsLeft(prepTime[side]);
-      }
-    },
-    [activePreset, running, prepTime]
-  );
-
-  const setInitialPrepTime = useCallback((seconds: number) => {
-    setPrepTime({ aff: seconds, neg: seconds });
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, []);
 
   return {
@@ -162,21 +95,9 @@ export function useTimer() {
     totalSeconds,
     running,
     expired,
-    activePreset,
-    prepTime,
-    prepSide,
     start,
     pause,
     reset,
-    setPreset,
-    setCustomTime,
-    switchPrepSide,
-    setInitialPrepTime,
+    setTime,
   };
-}
-
-export function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
 }

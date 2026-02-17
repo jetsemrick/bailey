@@ -1,9 +1,13 @@
+export type TournamentType = 'judge' | 'competitor';
+
 export interface Tournament {
   id: string;
   user_id: string;
   name: string;
   date: string | null;
   location: string | null;
+  tournament_type?: TournamentType;
+  team_name?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -14,10 +18,27 @@ export interface Round {
   tournament_id: string;
   round_number: number;
   opponent: string;
+  team_aff?: string;
+  team_neg?: string;
   side: 'aff' | 'neg';
   result: 'W' | 'L' | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Format round as "Team A v. Team B", falling back to legacy opponent or round number.
+ *  When teamName is provided (competitor), use it for TBD when it matches the user's side. */
+export function formatRoundName(r: Round, teamName?: string | null): string {
+  const aff = (r.team_aff ?? '').trim();
+  const neg = (r.team_neg ?? '').trim();
+  const tn = (teamName ?? '').trim();
+  if (aff || neg) {
+    const affDisplay = aff || (r.side === 'aff' && tn ? tn : 'TBD');
+    const negDisplay = neg || (r.side === 'neg' && tn ? tn : 'TBD');
+    return `${affDisplay} v. ${negDisplay}`;
+  }
+  if (r.opponent) return `Round ${r.round_number} vs ${r.opponent}`;
+  return `Round ${r.round_number}`;
 }
 
 export interface Flow {
@@ -32,6 +53,16 @@ export interface Flow {
 }
 
 export type CellColor = 'yellow' | 'green' | 'blue' | null;
+
+export interface FlowAnalytics {
+  id: string;
+  user_id: string;
+  flow_id: string;
+  notes_aff: string;
+  notes_neg: string;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface FlowCell {
   id: string;

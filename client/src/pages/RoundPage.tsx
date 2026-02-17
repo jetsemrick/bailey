@@ -1,26 +1,28 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Sidebar from '../components/Sidebar';
 import FlowGrid from '../components/FlowGrid';
 import FlowTabs from '../components/FlowTabs';
-import Timer from '../components/Timer';
+import FlowAnalytics from '../components/FlowAnalytics';
 import NewFlowDialog from '../components/NewFlowDialog';
 import { useFlowGrid } from '../hooks/useFlowGrid';
 import * as api from '../db/api';
 import type { Round, Tournament } from '../db/types';
+import { formatRoundName } from '../db/types';
 import type { ExportedRound } from '../db/api';
 
 export default function RoundPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const grid = useFlowGrid(id);
-
+  const [searchParams, setSearchParams] = useSearchParams();
   const [round, setRound] = useState<Round | null>(null);
   const [tournament, setTournament] = useState<Tournament | null>(null);
+  const grid = useFlowGrid(id, round);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [showNewFlow, setShowNewFlow] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [viewMode, setViewMode] = useState<'flow' | 'analytics'>('flow');
 
   useEffect(() => {
     if (!id) return;
@@ -35,10 +37,21 @@ export default function RoundPage() {
       .finally(() => setLoadingMeta(false));
   }, [id, navigate]);
 
+  // Select flow from URL when navigating from sidebar (e.g. ?flow=xxx)
+  useEffect(() => {
+    const flowId = searchParams.get('flow');
+    if (!flowId || !grid.flows.length) return;
+    const hasFlow = grid.flows.some((f) => f.id === flowId);
+    if (hasFlow) {
+      grid.selectFlow(flowId);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, grid.flows, grid.selectFlow, setSearchParams]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleAddFlow = async (positionName: string, initiatedBy: 'aff' | 'neg') => {
-    await grid.addFlow(positionName, initiatedBy);
+  const handleAddFlow = async (initiatedBy: 'aff' | 'neg', count: number) => {
+    await grid.addFlow(initiatedBy, count);
     setShowNewFlow(false);
   };
 
@@ -89,7 +102,7 @@ export default function RoundPage() {
   }
   if (round) {
     breadcrumbs.push({
-      label: `Round ${round.round_number}${round.opponent ? ` vs ${round.opponent}` : ''}`,
+      label: formatRoundName(round, tournament?.team_name),
     });
   }
 
@@ -124,14 +137,53 @@ export default function RoundPage() {
         {/* Sidebar */}
         <Sidebar
           activeRoundId={id}
+          activeFlowId={grid.activeFlowId}
+          activeRoundFlows={grid.flows}
+          onFlowClick={(_, flowId) => grid.selectFlow(flowId)}
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed((v) => !v)}
         />
 
         {/* Main content */}
         <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-          {/* Grid area */}
-          <FlowGrid grid={grid} />
+          {/* Flow / Analytics view toggle */}
+          <div className="shrink-0 flex border-b border-card-04 bg-card">
+            <button
+              onClick={() => setViewMode('flow')}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${
+                viewMode === 'flow'
+                  ? 'text-accent border-b-2 border-accent -mb-px'
+                  : 'text-foreground/60 hover:text-foreground'
+              }`}
+            >
+              Flow
+            </button>
+            <button
+              onClick={() => setViewMode('analytics')}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${
+                viewMode === 'analytics'
+                  ? 'text-accent border-b-2 border-accent -mb-px'
+                  : 'text-foreground/60 hover:text-foreground'
+              }`}
+            >
+              Analytics
+            </button>
+          </div>
+
+          {/* Grid area or Analytics */}
+          {viewMode === 'flow' ? (
+            <FlowGrid grid={grid} />
+          ) : grid.activeFlow ? (
+            <FlowAnalytics
+              flow={grid.activeFlow}
+              getCellContent={grid.getCellContent}
+              getColumnRowCount={grid.getColumnRowCount}
+            />
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-foreground/40 text-sm">
+              Select a flow tab to view analytics
+            </div>
+          )}
 
           {/* Tab bar */}
           <FlowTabs
@@ -152,9 +204,6 @@ export default function RoundPage() {
           )}
         </div>
       </div>
-
-      {/* Timer */}
-      <Timer />
 
       {/* New flow dialog */}
       {showNewFlow && (
