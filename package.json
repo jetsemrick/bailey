@@ -7,6 +7,7 @@
     "dev": "bun --cwd=client run dev",
     "build": "bun --cwd=client run build",
     "preview": "bun --cwd=client run preview",
-    "install:all": "bun install"
+    "install:all": "bun install",
+    "postinstall": "npm install --prefix client"
   }
 }
