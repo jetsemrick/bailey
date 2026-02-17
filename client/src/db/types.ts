@@ -12,6 +12,30 @@ export interface Tournament {
   updated_at: string;
 }
 
+/** Round options for dropdown: value stored in DB, label shown in UI */
+export const ROUND_OPTIONS: { value: number; label: string }[] = [
+  { value: 0, label: 'Practice' },
+  { value: 1, label: '1' },
+  { value: 2, label: '2' },
+  { value: 3, label: '3' },
+  { value: 4, label: '4' },
+  { value: 5, label: '5' },
+  { value: 6, label: '6' },
+  { value: 7, label: '7' },
+  { value: 8, label: '8' },
+  { value: 9, label: 'Triple-Octofinals' },
+  { value: 10, label: 'Double-Octofinals' },
+  { value: 11, label: 'Octofinals' },
+  { value: 12, label: 'Quarterfinals' },
+  { value: 13, label: 'Semifinals' },
+  { value: 14, label: 'Finals' },
+];
+
+export function getRoundLabel(roundNumber: number): string {
+  const opt = ROUND_OPTIONS.find((o) => o.value === roundNumber);
+  return opt?.label ?? `Round ${roundNumber}`;
+}
+
 export interface Round {
   id: string;
   user_id: string;
@@ -37,8 +61,8 @@ export function formatRoundName(r: Round, teamName?: string | null): string {
     const negDisplay = neg || (r.side === 'neg' && tn ? tn : 'TBD');
     return `${affDisplay} v. ${negDisplay}`;
   }
-  if (r.opponent) return `Round ${r.round_number} vs ${r.opponent}`;
-  return `Round ${r.round_number}`;
+  if (r.opponent) return `${getRoundLabel(r.round_number)} vs ${r.opponent}`;
+  return getRoundLabel(r.round_number);
 }
 
 export interface Flow {

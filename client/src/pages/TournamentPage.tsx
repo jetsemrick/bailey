@@ -3,10 +3,11 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import RoundForm from '../components/RoundForm';
 import TournamentForm from '../components/TournamentForm';
+import ConfirmModal from '../components/ConfirmModal';
 import { useRounds } from '../hooks/useRounds';
 import * as api from '../db/api';
 import type { Tournament } from '../db/types';
-import { formatRoundName } from '../db/types';
+import { formatRoundName, getRoundLabel } from '../db/types';
 
 export default function TournamentPage() {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +20,7 @@ export default function TournamentPage() {
   const { rounds, loading: loadingR, create, update, remove } = useRounds(id);
   const [showRoundForm, setShowRoundForm] = useState(false);
   const [editingRound, setEditingRound] = useState<string | null>(null);
+  const [deleteRoundTarget, setDeleteRoundTarget] = useState<string | null>(null);
   const [showEditTournament, setShowEditTournament] = useState(false);
 
   useEffect(() => {
@@ -40,9 +42,14 @@ export default function TournamentPage() {
     setEditingRound(null);
   };
 
-  const handleDeleteRound = async (roundId: string) => {
-    if (!window.confirm('Delete this round and all its flows?')) return;
-    await remove(roundId);
+  const handleDeleteRoundClick = (roundId: string) => {
+    setDeleteRoundTarget(roundId);
+  };
+
+  const handleDeleteRoundConfirm = async () => {
+    if (!deleteRoundTarget) return;
+    await remove(deleteRoundTarget);
+    setDeleteRoundTarget(null);
   };
 
   const handleUpdateTournament = async (data: { name: string; date: string | null; location: string | null; tournament_type: 'judge' | 'competitor'; team_name?: string | null }) => {
@@ -114,8 +121,8 @@ export default function TournamentPage() {
                 className="group flex items-center gap-4 bg-card border border-card-04 rounded-lg px-4 py-3 hover:border-accent/40 transition-colors cursor-pointer"
                 onClick={() => navigate(`/round/${r.id}`)}
               >
-                <div className="w-12 text-center">
-                  <span className="text-lg font-bold text-foreground">{r.round_number}</span>
+                <div className="min-w-24 text-center shrink-0">
+                  <span className="text-lg font-bold text-foreground">{getRoundLabel(r.round_number)}</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">
@@ -151,7 +158,7 @@ export default function TournamentPage() {
                     </svg>
                   </button>
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleDeleteRound(r.id); }}
+                    onClick={(e) => { e.stopPropagation(); handleDeleteRoundClick(r.id); }}
                     className="p-1.5 text-foreground/30 hover:text-red-500 transition-colors"
                     title="Delete round"
                   >
@@ -166,11 +173,21 @@ export default function TournamentPage() {
         )}
       </div>
 
+      {deleteRoundTarget && (
+        <ConfirmModal
+          title="Delete round?"
+          message="This will permanently delete the round and all its flows. This cannot be undone."
+          confirmLabel="Delete"
+          onConfirm={handleDeleteRoundConfirm}
+          onCancel={() => setDeleteRoundTarget(null)}
+        />
+      )}
+
       {showRoundForm && (
         <RoundForm
           title="Add Round"
           initial={{
-            round_number: rounds.length + 1,
+            round_number: 1,
             opponent: '',
             team_aff: '',
             team_neg: '',

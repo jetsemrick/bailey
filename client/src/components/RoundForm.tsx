@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { ROUND_OPTIONS } from '../db/types';
 
 interface RoundFormProps {
   initial?: {
@@ -26,7 +27,10 @@ interface RoundFormProps {
 }
 
 export default function RoundForm({ initial, onSubmit, onCancel, title, isJudgeMode, teamName }: RoundFormProps) {
-  const [roundNumber, setRoundNumber] = useState(initial?.round_number ?? 1);
+  const validInitial = initial?.round_number != null && ROUND_OPTIONS.some((o) => o.value === initial!.round_number)
+    ? initial!.round_number
+    : 1;
+  const [roundNumber, setRoundNumber] = useState(validInitial);
   const [teamAff, setTeamAff] = useState(
     initial?.team_aff ?? (initial?.side === 'neg' ? initial?.opponent ?? '' : '')
   );
@@ -73,15 +77,19 @@ export default function RoundForm({ initial, onSubmit, onCancel, title, isJudgeM
         <h2 className="text-base font-semibold mb-4">{title}</h2>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="block text-sm font-medium mb-1">Round #</label>
-            <input
-              type="number"
-              min="1"
+            <label className="block text-sm font-medium mb-1">Round</label>
+            <select
               required
               value={roundNumber}
-              onChange={(e) => setRoundNumber(parseInt(e.target.value, 10) || 1)}
+              onChange={(e) => setRoundNumber(parseInt(e.target.value, 10))}
               className="w-full px-3 py-1.5 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm"
-            />
+            >
+              {ROUND_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
           </div>
           {isJudgeMode ? (
             <>
