@@ -438,6 +438,9 @@ export default function FlowGrid({ grid }: FlowGridProps) {
         updateCell(fromCol, fromRow, '', null);
         updateCell(toCol, toRow, content, color);
       }
+
+      // Keep focus on the moved cell so keyboard editing continues at new position.
+      setSelectedCell({ col: toCol, row: toRow });
     },
     [getCellContent, getCellColor, maxRows, bulkUpdateCells, updateCell]
   );
