@@ -149,7 +149,7 @@ export default function TournamentPage() {
                 {r.judge?.trim() && (
                   <div className="shrink-0 flex flex-nowrap gap-1 justify-end">
                     {r.judge
-                      .split(',')
+                      .split(r.judge.includes('|') ? '|' : ',')
                       .map((j) => j.trim())
                       .filter(Boolean)
                       .map((name) => (

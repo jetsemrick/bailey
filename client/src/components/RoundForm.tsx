@@ -37,6 +37,7 @@ export default function RoundForm({ initial, takenRoundNumbers = [], onSubmit, o
   const userDisplayName = [meta?.first_name, meta?.last_name].filter(Boolean).join(' ');
 
   const availableOptions = ROUND_OPTIONS.filter((o) => !takenRoundNumbers.includes(o.value));
+  const noRoundsAvailable = availableOptions.length === 0;
   const validInitial =
     initial?.round_number != null && availableOptions.some((o) => o.value === initial!.round_number)
       ? initial!.round_number
@@ -55,7 +56,8 @@ export default function RoundForm({ initial, takenRoundNumbers = [], onSubmit, o
   const [result, setResult] = useState<'W' | 'L' | ''>(initial?.result ?? '');
   const parseJudges = (s: string | undefined): string[] => {
     if (!s?.trim()) return isJudgeMode ? [] : [''];
-    const arr = s.split(',').map((j) => j.trim()).filter(Boolean);
+    const delimiter = s.includes('|') ? '|' : ',';
+    const arr = s.split(delimiter).map((j) => j.trim()).filter(Boolean);
     return arr.length ? arr : isJudgeMode ? [] : [''];
   };
   const [judges, setJudges] = useState<string[]>(() => parseJudges(initial?.judge));
@@ -79,7 +81,7 @@ export default function RoundForm({ initial, takenRoundNumbers = [], onSubmit, o
         team_neg: teamNeg.trim(),
         side: 'aff',
         result: null,
-        judge: judges.filter((j) => j.trim()).join(', '),
+        judge: judges.filter((j) => j.trim()).join(' | '),
       });
     } else {
       const myTeam = (teamName ?? '').trim();
@@ -91,7 +93,7 @@ export default function RoundForm({ initial, takenRoundNumbers = [], onSubmit, o
         team_neg: side === 'neg' ? myTeam : opp,
         side,
         result: result === '' ? null : result,
-        judge: judges.filter((j) => j.trim()).join(', '),
+        judge: judges.filter((j) => j.trim()).join(' | '),
       });
     }
   };
@@ -103,6 +105,18 @@ export default function RoundForm({ initial, takenRoundNumbers = [], onSubmit, o
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-base font-semibold mb-4">{title}</h2>
+        {noRoundsAvailable ? (
+          <div className="space-y-4">
+            <p className="text-sm text-foreground/60">All round slots are filled. You cannot add more rounds to this tournament.</p>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="w-full py-1.5 bg-card-02 text-foreground rounded text-sm font-medium hover:bg-card-03 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="block text-sm font-medium mb-1">Round</label>
@@ -279,6 +293,7 @@ export default function RoundForm({ initial, takenRoundNumbers = [], onSubmit, o
             </button>
           </div>
         </form>
+        )}
       </div>
     </div>
   );

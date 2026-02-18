@@ -3,7 +3,12 @@ import * as api from '../db/api';
 
 interface RoundAnalyticsProps {
   roundId: string;
-  /** When true (judge mode), show Aff/Neg notes; when false (competitor), show Decision/Judge notes */
+  /**
+   * When true (judge mode), show Aff/Neg notes; when false (competitor), show Decision/Judge notes.
+   * Note: In competitor mode, the `notes_neg` database field is reused to store general "Judge Notes"
+   * (distinct from the "Negative Feedback" meaning it has in judge mode). This dual usage is intentional
+   * to avoid adding extra database columns for what is essentially similar feedback data.
+   */
   isJudgeMode?: boolean;
 }
 
@@ -13,9 +18,16 @@ export default function RoundAnalytics({ roundId, isJudgeMode }: RoundAnalyticsP
   const [notesDecision, setNotesDecision] = useState('');
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    setLoading(true);
+    setLoaded(false);
+    setError(null);
+    setNotesAff('');
+    setNotesNeg('');
+    setNotesDecision('');
     api
       .getRoundAnalytics(roundId)
       .then((a) => {
@@ -25,6 +37,9 @@ export default function RoundAnalytics({ roundId, isJudgeMode }: RoundAnalyticsP
           setNotesDecision(a.notes_decision ?? '');
         }
         setLoaded(true);
+      })
+      .catch(() => {
+        setError('Failed to load analytics. Please refresh the page.');
       })
       .finally(() => setLoading(false));
   }, [roundId]);
@@ -69,6 +84,14 @@ export default function RoundAnalytics({ roundId, isJudgeMode }: RoundAnalyticsP
     return (
       <div className="flex-1 flex items-center justify-center text-foreground/40 text-sm">
         Loading...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-red-500 text-sm">
+        {error}
       </div>
     );
   }
