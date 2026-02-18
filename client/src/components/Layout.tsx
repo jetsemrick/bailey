@@ -86,8 +86,15 @@ export default function Layout({ children, breadcrumbs, headerActions }: LayoutP
                     onClick={() => setShowUserMenu(false)}
                   />
                   <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-card-04 rounded-lg shadow-lg py-1 min-w-[180px]">
-                    <div className="px-3 py-2 text-xs text-foreground/50 border-b border-card-04 truncate">
-                      {user.email}
+                    <div className="px-3 py-2 text-xs text-foreground/50 border-b border-card-04 space-y-0.5">
+                      <div className="truncate">
+                        {[user.user_metadata?.first_name, user.user_metadata?.last_name]
+                          .filter(Boolean)
+                          .join(' ') || user.email}
+                      </div>
+                      {user.email && (
+                        <div className="truncate text-foreground/40">{user.email}</div>
+                      )}
                     </div>
                     <button
                       onClick={signOut}

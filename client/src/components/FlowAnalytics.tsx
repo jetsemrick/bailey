@@ -78,7 +78,7 @@ export default function FlowAnalytics({ flow }: FlowAnalyticsProps) {
               scheduleSave();
             }}
             onBlur={saveNotes}
-            placeholder="Key arguments, strategy, feedback..."
+            placeholder="Feedback..."
             className="flex-1 w-full p-4 rounded-lg border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm resize-none leading-relaxed"
           />
         </div>
@@ -93,7 +93,7 @@ export default function FlowAnalytics({ flow }: FlowAnalyticsProps) {
               scheduleSave();
             }}
             onBlur={saveNotes}
-            placeholder="Key arguments, strategy, feedback..."
+            placeholder="Feedback..."
             className="flex-1 w-full p-4 rounded-lg border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm resize-none leading-relaxed"
           />
         </div>

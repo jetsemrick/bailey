@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { Tournament, Round, Flow, FlowCell, FlowAnalytics, CellColor } from './types';
+import type { Tournament, Round, Flow, FlowCell, FlowAnalytics, RoundAnalytics, CellColor } from './types';
 
 // ── helpers ──────────────────────────────────────────────────
 
@@ -34,10 +34,9 @@ export async function createTournament(
   fields: Pick<Tournament, 'name'> & Partial<Pick<Tournament, 'date' | 'location' | 'tournament_type' | 'team_name'>>
 ): Promise<Tournament> {
   const userId = await uid();
-  const { tournament_type: _t, team_name: _tn, ...dbFields } = fields;
   const { data, error } = await supabase
     .from('tournaments')
-    .insert({ user_id: userId, ...dbFields })
+    .insert({ user_id: userId, ...fields })
     .select()
     .single();
   if (error) throw error;
@@ -48,10 +47,9 @@ export async function updateTournament(
   id: string,
   fields: Partial<Pick<Tournament, 'name' | 'date' | 'location' | 'tournament_type' | 'team_name'>>
 ): Promise<Tournament> {
-  const { tournament_type: _t, team_name: _tn, ...dbFields } = fields;
   const { data, error } = await supabase
     .from('tournaments')
-    .update(dbFields)
+    .update(fields)
     .eq('id', id)
     .select()
     .single();
@@ -88,7 +86,7 @@ export async function getRound(id: string): Promise<Round> {
 
 export async function createRound(
   tournamentId: string,
-  fields: Partial<Pick<Round, 'round_number' | 'opponent' | 'team_aff' | 'team_neg' | 'side' | 'result'>>
+  fields: Partial<Pick<Round, 'round_number' | 'opponent' | 'team_aff' | 'team_neg' | 'side' | 'result' | 'judge'>>
 ): Promise<Round> {
   const userId = await uid();
   const { data, error } = await supabase
@@ -102,7 +100,7 @@ export async function createRound(
 
 export async function updateRound(
   id: string,
-  fields: Partial<Pick<Round, 'round_number' | 'opponent' | 'team_aff' | 'team_neg' | 'side' | 'result'>>
+  fields: Partial<Pick<Round, 'round_number' | 'opponent' | 'team_aff' | 'team_neg' | 'side' | 'result' | 'judge'>>
 ): Promise<Round> {
   const { data, error } = await supabase
     .from('rounds')
@@ -246,6 +244,35 @@ export async function upsertFlowAnalytics(
   return data;
 }
 
+// ── Round Analytics ───────────────────────────────────────────
+
+export async function getRoundAnalytics(roundId: string): Promise<RoundAnalytics | null> {
+  const { data, error } = await supabase
+    .from('round_analytics')
+    .select('*')
+    .eq('round_id', roundId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function upsertRoundAnalytics(
+  roundId: string,
+  fields: { notes_aff?: string; notes_neg?: string; notes_decision?: string }
+): Promise<RoundAnalytics> {
+  const userId = await uid();
+  const { data, error } = await supabase
+    .from('round_analytics')
+    .upsert(
+      { user_id: userId, round_id: roundId, ...fields },
+      { onConflict: 'round_id' }
+    )
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 // ── Export / Import helpers ──────────────────────────────────
 
 export type ExportedRoundData = Omit<Round, 'user_id'> & {
@@ -316,6 +343,7 @@ export async function importRound(
       team_neg: data.round.team_neg ?? '',
       side: data.round.side,
       result: data.round.result,
+      judge: data.round.judge ?? '',
     })
     .select()
     .single();
@@ -364,6 +392,7 @@ export async function importTournament(data: ExportedTournament): Promise<string
       date: data.tournament.date,
       location: data.tournament.location,
       tournament_type: (data.tournament as { tournament_type?: string }).tournament_type ?? 'competitor',
+      team_name: (data.tournament as { team_name?: string | null }).team_name ?? null,
     })
     .select()
     .single();
@@ -381,6 +410,7 @@ export async function importTournament(data: ExportedTournament): Promise<string
         team_neg: round.team_neg ?? '',
         side: round.side,
         result: round.result,
+        judge: round.judge ?? '',
       })
       .select()
       .single();

@@ -7,3 +7,4 @@ build/
 *.log
 client/dist/
 client/node_modules/
+package-lock.json

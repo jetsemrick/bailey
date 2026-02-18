@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import type { CellColor } from '../db/types';
 
-const COLOR_BG: Record<string, string> = {
+export const COLOR_BG: Record<string, string> = {
   yellow: 'bg-yellow-100/60 dark:bg-yellow-900/20',
   green: 'bg-green-100/60 dark:bg-green-900/20',
   blue: 'bg-blue-100/60 dark:bg-blue-900/20',
@@ -21,7 +21,7 @@ interface CellProps {
 }
 
 /** Sanitize HTML to only allow b, u, mark tags */
-function sanitizeHtml(html: string): string {
+export function sanitizeHtml(html: string): string {
   const div = document.createElement('div');
   div.innerHTML = html;
   const allowedColors = ['yellow', 'green', 'blue', ''];

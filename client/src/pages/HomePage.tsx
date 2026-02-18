@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import TournamentForm from '../components/TournamentForm';
+import ConfirmModal from '../components/ConfirmModal';
 import { useTournaments } from '../hooks/useTournaments';
 
 export default function HomePage() {
   const { tournaments, loading, create, remove } = useTournaments();
   const [showForm, setShowForm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const handleCreate = async (data: { name: string; date: string | null; location: string | null; tournament_type: 'judge' | 'competitor'; team_name?: string | null }) => {
@@ -21,10 +23,15 @@ export default function HomePage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this tournament and all its rounds?')) return;
+  const handleDeleteClick = (id: string) => {
+    setDeleteTarget(id);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
     try {
-      await remove(id);
+      await remove(deleteTarget);
+      setDeleteTarget(null);
     } catch (err) {
       console.error('Failed to delete tournament:', err);
     }
@@ -66,7 +73,13 @@ export default function HomePage() {
                   {t.name}
                 </h3>
                 {t.date && (
-                  <div className="text-xs text-foreground/50">{t.date}</div>
+                  <div className="text-xs text-foreground/50">
+                    {new Date(t.date + 'T00:00:00').toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </div>
                 )}
                 {t.location && (
                   <div className="text-xs text-foreground/50">{t.location}</div>
@@ -74,7 +87,7 @@ export default function HomePage() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDelete(t.id);
+                    handleDeleteClick(t.id);
                   }}
                   className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 p-1.5 text-foreground/30 hover:text-red-500 transition-all"
                   title="Delete tournament"
@@ -88,6 +101,16 @@ export default function HomePage() {
           </div>
         )}
       </div>
+
+      {deleteTarget && (
+        <ConfirmModal
+          title="Delete tournament?"
+          message="This will permanently delete the tournament and all its rounds. This cannot be undone."
+          confirmLabel="Delete"
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
 
       {showForm && (
         <TournamentForm

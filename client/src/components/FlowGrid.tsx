@@ -16,7 +16,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import Cell from './Cell';
+import Cell, { COLOR_BG, sanitizeHtml } from './Cell';
 import { SPEECH_COLUMNS, type CellColor } from '../db/types';
 import type { useFlowGrid } from '../hooks/useFlowGrid';
 import { useUndoRedo } from '../hooks/useUndoRedo';
@@ -360,7 +360,7 @@ export default function FlowGrid({ grid }: FlowGridProps) {
       onDragEnd={handleDragEnd}
     >
       <div ref={containerRef} className="flex-1 overflow-auto min-h-0">
-        <div className="flex min-w-[800px] h-full">
+        <div className="flex min-w-[800px] min-h-full">
           {flowColumns.map(({ label, dataCol }) => (
             <FlowColumn
               key={`${label}-${dataCol}`}
@@ -380,11 +380,21 @@ export default function FlowGrid({ grid }: FlowGridProps) {
       </div>
 
       <DragOverlay dropAnimation={null}>
-        {dragItem && (
-          <div className="bg-accent/10 border border-accent rounded p-1 text-sm opacity-80 max-w-[150px] truncate">
-            {getCellContent(dragItem.col, dragItem.row) || '(empty)'}
-          </div>
-        )}
+        {dragItem && (() => {
+          const content = getCellContent(dragItem.col, dragItem.row) || '';
+          const color = getCellColor(dragItem.col, dragItem.row);
+          const label = flowColumns.find((c) => c.dataCol === dragItem.col)?.label;
+          const side = label ? COLUMN_SIDES[label] : 'aff';
+          const colorClass = color ? COLOR_BG[color] ?? '' : '';
+          const sideTextColor = side === 'aff' ? 'text-blue-600 dark:text-blue-400' : side === 'neg' ? 'text-red-600 dark:text-red-400' : 'text-foreground';
+          return (
+            <div
+              className={`min-w-[100px] min-h-[28px] p-1 whitespace-pre-wrap break-words rounded shadow border border-card-04 bg-card ${sideTextColor} ${colorClass}`}
+              style={{ fontSize: 'var(--cell-font-size, 14px)' }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(content) || '&nbsp;' }}
+            />
+          );
+        })()}
       </DragOverlay>
     </DndContext>
   );

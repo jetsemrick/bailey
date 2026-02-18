@@ -7,7 +7,7 @@ interface AuthState {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -43,8 +43,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null };
   };
 
-  const signUp = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({ email, password });
+  const signUp = async (email: string, password: string, firstName: string, lastName: string) => {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { first_name: firstName, last_name: lastName } },
+    });
     return { error: error?.message ?? null };
   };
 
