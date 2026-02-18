@@ -12,6 +12,7 @@ export default function RoundAnalytics({ roundId, isJudgeMode }: RoundAnalyticsP
   const [notesNeg, setNotesNeg] = useState('');
   const [notesDecision, setNotesDecision] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -23,6 +24,7 @@ export default function RoundAnalytics({ roundId, isJudgeMode }: RoundAnalyticsP
           setNotesNeg(a.notes_neg ?? '');
           setNotesDecision(a.notes_decision ?? '');
         }
+        setLoaded(true);
       })
       .finally(() => setLoading(false));
   }, [roundId]);
@@ -30,15 +32,18 @@ export default function RoundAnalytics({ roundId, isJudgeMode }: RoundAnalyticsP
   const notesAffRef = useRef(notesAff);
   const notesNegRef = useRef(notesNeg);
   const notesDecisionRef = useRef(notesDecision);
+  const loadedRef = useRef(loaded);
   notesAffRef.current = notesAff;
   notesNegRef.current = notesNeg;
   notesDecisionRef.current = notesDecision;
+  loadedRef.current = loaded;
 
   const saveNotes = useCallback(() => {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
+    if (!loadedRef.current) return;
     api
       .upsertRoundAnalytics(roundId, {
         notes_aff: notesAffRef.current,
@@ -132,9 +137,9 @@ export default function RoundAnalytics({ roundId, isJudgeMode }: RoundAnalyticsP
             Decision Notes
           </label>
           <textarea
-            value={notesAff}
+            value={notesDecision}
             onChange={(e) => {
-              setNotesAff(e.target.value);
+              setNotesDecision(e.target.value);
               scheduleSave();
             }}
             onBlur={saveNotes}

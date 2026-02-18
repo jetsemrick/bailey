@@ -33,8 +33,8 @@ interface RoundFormProps {
 
 export default function RoundForm({ initial, takenRoundNumbers = [], onSubmit, onCancel, title, isJudgeMode, teamName }: RoundFormProps) {
   const { user } = useAuth();
-  const meta = user?.user_metadata as { full_name?: string; name?: string } | undefined;
-  const userDisplayName = meta?.full_name ?? meta?.name ?? '';
+  const meta = user?.user_metadata as { first_name?: string; last_name?: string } | undefined;
+  const userDisplayName = [meta?.first_name, meta?.last_name].filter(Boolean).join(' ');
 
   const availableOptions = ROUND_OPTIONS.filter((o) => !takenRoundNumbers.includes(o.value));
   const validInitial =
