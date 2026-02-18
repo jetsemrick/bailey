@@ -66,7 +66,12 @@ function SortableCell({
 }) {
   const {
     attributes, listeners, setNodeRef, transform, transition, isDragging,
-  } = useSortable({ id, data: { col, row } });
+  } = useSortable({
+    id,
+    data: { col, row },
+    // Disable dnd-kit drop/reorder transition to avoid "slingshot" motion.
+    transition: null,
+  });
 
   // Strip role and tabIndex from dnd-kit attributes so the Cell handles its
   // own focus and keyboard events without the wrapper intercepting them.
@@ -74,15 +79,21 @@ function SortableCell({
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    transition: transition ?? undefined,
     ...(selected && { scrollMarginTop: HEADER_HEIGHT }),
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...restAttributes} className="relative" data-cell-id={`${col}:${row}`}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...restAttributes}
+      className={`relative ${isDragging ? 'opacity-0 pointer-events-none' : ''}`}
+      data-cell-id={`${col}:${row}`}
+    >
       <Cell
-        content={isDragging ? '' : content}
-        color={isDragging ? null : color}
+        content={content}
+        color={color}
         side={side}
         onUpdate={onUpdate}
         onColorChange={onColorChange}
@@ -478,15 +489,16 @@ export default function FlowGrid({ grid }: FlowGridProps) {
         {dragItem && (() => {
           const content = getCellContent(dragItem.col, dragItem.row) || '';
           const color = getCellColor(dragItem.col, dragItem.row);
+          if (!content.trim()) return null;
           const label = flowColumns.find((c) => c.dataCol === dragItem.col)?.label;
           const side = label ? COLUMN_SIDES[label] : 'aff';
           const colorClass = color ? COLOR_BG[color] ?? '' : '';
           const sideTextColor = side === 'aff' ? 'text-blue-600 dark:text-blue-400' : side === 'neg' ? 'text-red-600 dark:text-red-400' : 'text-foreground';
           return (
             <div
-              className={`min-w-[100px] min-h-[28px] p-1 whitespace-pre-wrap break-words rounded shadow border border-card-04 bg-card ${sideTextColor} ${colorClass}`}
+              className={`pointer-events-none min-w-[100px] min-h-[28px] p-1 whitespace-pre-wrap break-words rounded shadow border border-card-04 bg-card ${sideTextColor} ${colorClass}`}
               style={{ fontSize: 'var(--cell-font-size, 14px)' }}
-              dangerouslySetInnerHTML={{ __html: sanitizeHtml(content) || '&nbsp;' }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(content) }}
             />
           );
         })()}
