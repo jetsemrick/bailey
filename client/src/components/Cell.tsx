@@ -14,9 +14,16 @@ interface CellProps {
   side?: 'aff' | 'neg';
   onUpdate: (content: string) => void;
   onColorChange?: (color: CellColor) => void;
-  /** Whether this cell currently has keyboard focus */
-  focused?: boolean;
+  /** Whether this cell is selected (has selection ring, arrow keys navigate) */
+  selected?: boolean;
+  /** Whether this cell is in editing mode (contenteditable focused, arrow keys move caret) */
+  editing?: boolean;
   onFocus?: () => void;
+  onStartEditing?: () => void;
+  onStopEditing?: () => void;
+  /** Character to insert when entering edit mode (e.g. from type-to-edit) */
+  pendingInput?: string | null;
+  onClearPendingInput?: () => void;
   onNavigate?: (direction: 'up' | 'down' | 'left' | 'right') => void;
 }
 
@@ -51,15 +58,21 @@ export default function Cell({
   color,
   side,
   onUpdate,
-  focused,
+  selected,
+  editing,
   onFocus,
+  onStartEditing,
+  onStopEditing,
+  pendingInput,
+  onClearPendingInput,
   onNavigate,
 }: CellProps) {
   const divRef = useRef<HTMLDivElement>(null);
 
-  // Focus and place caret at end when this cell becomes active
+  // Focus and place caret at end when entering editing mode
   useEffect(() => {
-    if (focused && divRef.current) {
+    if (editing && divRef.current) {
+      divRef.current.innerHTML = sanitizeHtml(content);
       divRef.current.focus();
       const range = document.createRange();
       const sel = window.getSelection();
@@ -67,8 +80,12 @@ export default function Cell({
       range.collapse(false);
       sel?.removeAllRanges();
       sel?.addRange(range);
+      if (pendingInput) {
+        document.execCommand('insertText', false, pendingInput);
+        onClearPendingInput?.();
+      }
     }
-  }, [focused]);
+  }, [editing]); // eslint-disable-line react-hooks/exhaustive-deps -- only set initial content when entering edit mode
 
   const commitEdit = useCallback(() => {
     if (!divRef.current) return;
@@ -123,6 +140,16 @@ export default function Cell({
     if (e.key === 'Escape') {
       e.preventDefault();
       if (divRef.current) divRef.current.innerHTML = content;
+      onStopEditing?.();
+      return;
+    }
+    // Arrow up/down: exit edit mode and navigate
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      e.stopPropagation();
+      commitEdit();
+      onStopEditing?.();
+      onNavigate?.(e.key === 'ArrowUp' ? 'up' : 'down');
       return;
     }
     // Enter: commit and move down (Shift+Enter inserts newline)
@@ -165,16 +192,20 @@ export default function Cell({
   // Sanitize content on load to prevent XSS from imported/database content
   const sanitizedContent = sanitizeHtml(content);
 
+  const selectedClass = selected ? 'border border-accent/25 bg-card-01 rounded-sm' : 'border border-transparent';
+  const editingBgClass = editing ? 'bg-card-01' : '';
+
   return (
     <div
       ref={divRef}
-      contentEditable
+      contentEditable={editing}
       suppressContentEditableWarning
-      dangerouslySetInnerHTML={{ __html: sanitizedContent }}
-      onFocus={onFocus}
-      onBlur={commitEdit}
+      {...(!editing && { dangerouslySetInnerHTML: { __html: sanitizedContent } })}
+      onClick={!editing ? onFocus : undefined}
+      onDoubleClick={!editing ? onStartEditing : undefined}
+      onBlur={() => { commitEdit(); onStopEditing?.(); }}
       onKeyDown={handleKeyDown}
-      className={`w-full min-h-[28px] p-1 focus:outline-none cursor-text whitespace-pre-wrap break-words ${sideTextColor} ${colorClass}`}
+      className={`w-full min-h-[28px] p-1 focus:outline-none cursor-text whitespace-pre-wrap break-words ${selectedClass} ${editingBgClass} ${sideTextColor} ${colorClass}`}
       style={{ fontSize: 'var(--cell-font-size, 14px)' }}
     />
   );
