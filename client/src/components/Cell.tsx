@@ -203,7 +203,7 @@ export default function Cell({
       {...(!editing && { dangerouslySetInnerHTML: { __html: sanitizedContent } })}
       onClick={!editing ? onFocus : undefined}
       onDoubleClick={!editing ? onStartEditing : undefined}
-      onBlur={commitEdit}
+      onBlur={() => { commitEdit(); onStopEditing?.(); }}
       onKeyDown={handleKeyDown}
       className={`w-full min-h-[28px] p-1 focus:outline-none cursor-text whitespace-pre-wrap break-words ${selectedClass} ${editingBgClass} ${sideTextColor} ${colorClass}`}
       style={{ fontSize: 'var(--cell-font-size, 14px)' }}
