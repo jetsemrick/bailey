@@ -14,7 +14,6 @@ export interface Tournament {
 
 /** Round options for dropdown: value stored in DB, label shown in UI */
 export const ROUND_OPTIONS: { value: number; label: string }[] = [
-  { value: 0, label: 'Practice' },
   { value: 1, label: '1' },
   { value: 2, label: '2' },
   { value: 3, label: '3' },

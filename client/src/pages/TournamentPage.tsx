@@ -146,6 +146,22 @@ export default function TournamentPage() {
                     </div>
                   )}
                 </div>
+                {r.judge?.trim() && (
+                  <div className="shrink-0 flex flex-nowrap gap-1 justify-end">
+                    {r.judge
+                      .split(',')
+                      .map((j) => j.trim())
+                      .filter(Boolean)
+                      .map((name) => (
+                        <span
+                          key={name}
+                          className="inline-block px-2 py-0.5 rounded bg-card-02 text-xs text-foreground/60"
+                        >
+                          {name}
+                        </span>
+                      ))}
+                  </div>
+                )}
                 <div className="w-10 text-center">
                   {(tournament.tournament_type ?? stateTournamentType) !== 'judge' && r.result && (
                     <span
@@ -205,6 +221,7 @@ export default function TournamentPage() {
             result: null,
             judge: '',
           }}
+          takenRoundNumbers={rounds.map((r) => r.round_number)}
           onSubmit={handleCreateRound}
           onCancel={() => setShowRoundForm(false)}
           isJudgeMode={(tournament.tournament_type ?? stateTournamentType) === 'judge'}
@@ -224,6 +241,7 @@ export default function TournamentPage() {
             result: editingRoundData.result,
             judge: editingRoundData.judge ?? '',
           }}
+          takenRoundNumbers={rounds.filter((r) => r.id !== editingRoundData.id).map((r) => r.round_number)}
           onSubmit={(data) => handleUpdateRound(editingRoundData.id, data)}
           onCancel={() => setEditingRound(null)}
           isJudgeMode={(tournament.tournament_type ?? stateTournamentType) === 'judge'}

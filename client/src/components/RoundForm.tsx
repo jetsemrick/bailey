@@ -12,6 +12,8 @@ interface RoundFormProps {
     result: 'W' | 'L' | null;
     judge: string;
   };
+  /** Round numbers already used by other rounds (exclude when editing) */
+  takenRoundNumbers?: number[];
   onSubmit: (data: {
     round_number: number;
     opponent: string;
@@ -29,14 +31,16 @@ interface RoundFormProps {
   teamName?: string;
 }
 
-export default function RoundForm({ initial, onSubmit, onCancel, title, isJudgeMode, teamName }: RoundFormProps) {
+export default function RoundForm({ initial, takenRoundNumbers = [], onSubmit, onCancel, title, isJudgeMode, teamName }: RoundFormProps) {
   const { user } = useAuth();
   const meta = user?.user_metadata as { full_name?: string; name?: string } | undefined;
   const userDisplayName = meta?.full_name ?? meta?.name ?? '';
 
-  const validInitial = initial?.round_number != null && ROUND_OPTIONS.some((o) => o.value === initial!.round_number)
-    ? initial!.round_number
-    : 1;
+  const availableOptions = ROUND_OPTIONS.filter((o) => !takenRoundNumbers.includes(o.value));
+  const validInitial =
+    initial?.round_number != null && availableOptions.some((o) => o.value === initial!.round_number)
+      ? initial!.round_number
+      : availableOptions[0]?.value ?? 1;
   const [roundNumber, setRoundNumber] = useState(validInitial);
   const [teamAff, setTeamAff] = useState(
     initial?.team_aff ?? (initial?.side === 'neg' ? initial?.opponent ?? '' : '')
@@ -104,11 +108,11 @@ export default function RoundForm({ initial, onSubmit, onCancel, title, isJudgeM
             <label className="block text-sm font-medium mb-1">Round</label>
             <select
               required
-              value={roundNumber}
+              value={availableOptions.some((o) => o.value === roundNumber) ? roundNumber : availableOptions[0]?.value ?? 1}
               onChange={(e) => setRoundNumber(parseInt(e.target.value, 10))}
               className="w-full px-3 py-1.5 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm"
             >
-              {ROUND_OPTIONS.map((o) => (
+              {availableOptions.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
