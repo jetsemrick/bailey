@@ -5,6 +5,7 @@ import Sidebar from '../components/Sidebar';
 import FlowGrid from '../components/FlowGrid';
 import FlowTabs from '../components/FlowTabs';
 import FlowAnalytics from '../components/FlowAnalytics';
+import RoundAnalytics from '../components/RoundAnalytics';
 import NewFlowDialog from '../components/NewFlowDialog';
 import { useFlowGrid } from '../hooks/useFlowGrid';
 import * as api from '../db/api';
@@ -119,6 +120,8 @@ export default function RoundPage() {
               getCellContent={grid.getCellContent}
               getColumnRowCount={grid.getColumnRowCount}
             />
+          ) : grid.flows.length === 0 && id ? (
+            <RoundAnalytics roundId={id} isJudgeMode={tournament?.tournament_type === 'judge'} />
           ) : (
             <div className="flex-1 flex items-center justify-center text-foreground/40 text-sm">
               Select a flow tab to view notes

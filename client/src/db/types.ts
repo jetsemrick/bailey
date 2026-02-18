@@ -46,6 +46,7 @@ export interface Round {
   team_neg?: string;
   side: 'aff' | 'neg';
   result: 'W' | 'L' | null;
+  judge?: string;
   created_at: string;
   updated_at: string;
 }
@@ -84,6 +85,17 @@ export interface FlowAnalytics {
   flow_id: string;
   notes_aff: string;
   notes_neg: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RoundAnalytics {
+  id: string;
+  user_id: string;
+  round_id: string;
+  notes_aff: string;
+  notes_neg: string;
+  notes_decision?: string;
   created_at: string;
   updated_at: string;
 }

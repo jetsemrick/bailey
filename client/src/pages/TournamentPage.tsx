@@ -89,7 +89,15 @@ export default function TournamentPage() {
               {tournament.name}
             </h2>
             <div className="flex gap-3 text-xs text-foreground/50 mt-1">
-              {tournament.date && <span>{tournament.date}</span>}
+              {tournament.date && (
+                <span>
+                  {new Date(tournament.date + 'T00:00:00').toLocaleDateString('en-US', {
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </span>
+              )}
               {tournament.location && <span>{tournament.location}</span>}
             </div>
           </div>
@@ -121,8 +129,10 @@ export default function TournamentPage() {
                 className="group flex items-center gap-4 bg-card border border-card-04 rounded-lg px-4 py-3 hover:border-accent/40 transition-colors cursor-pointer"
                 onClick={() => navigate(`/round/${r.id}`)}
               >
-                <div className="min-w-24 text-center shrink-0">
-                  <span className="text-lg font-bold text-foreground">{getRoundLabel(r.round_number)}</span>
+                <div className="min-w-24 shrink-0 flex justify-center">
+                  <span className="inline-flex items-center justify-center px-4 py-1.5 rounded-full bg-accent/15 text-accent text-sm font-semibold">
+                    {getRoundLabel(r.round_number)}
+                  </span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">
@@ -193,6 +203,7 @@ export default function TournamentPage() {
             team_neg: '',
             side: 'aff',
             result: null,
+            judge: '',
           }}
           onSubmit={handleCreateRound}
           onCancel={() => setShowRoundForm(false)}
@@ -211,6 +222,7 @@ export default function TournamentPage() {
             team_neg: editingRoundData.team_neg ?? '',
             side: editingRoundData.side,
             result: editingRoundData.result,
+            judge: editingRoundData.judge ?? '',
           }}
           onSubmit={(data) => handleUpdateRound(editingRoundData.id, data)}
           onCancel={() => setEditingRound(null)}

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { ROUND_OPTIONS } from '../db/types';
+import { useAuth } from '../auth/AuthContext';
 
 interface RoundFormProps {
   initial?: {
@@ -9,6 +10,7 @@ interface RoundFormProps {
     team_neg: string;
     side: 'aff' | 'neg';
     result: 'W' | 'L' | null;
+    judge: string;
   };
   onSubmit: (data: {
     round_number: number;
@@ -17,6 +19,7 @@ interface RoundFormProps {
     team_neg: string;
     side: 'aff' | 'neg';
     result: 'W' | 'L' | null;
+    judge: string;
   }) => void;
   onCancel: () => void;
   title: string;
@@ -27,6 +30,10 @@ interface RoundFormProps {
 }
 
 export default function RoundForm({ initial, onSubmit, onCancel, title, isJudgeMode, teamName }: RoundFormProps) {
+  const { user } = useAuth();
+  const meta = user?.user_metadata as { full_name?: string; name?: string } | undefined;
+  const userDisplayName = meta?.full_name ?? meta?.name ?? '';
+
   const validInitial = initial?.round_number != null && ROUND_OPTIONS.some((o) => o.value === initial!.round_number)
     ? initial!.round_number
     : 1;
@@ -42,6 +49,21 @@ export default function RoundForm({ initial, onSubmit, onCancel, title, isJudgeM
   );
   const [side, setSide] = useState<'aff' | 'neg'>(initial?.side ?? 'aff');
   const [result, setResult] = useState<'W' | 'L' | ''>(initial?.result ?? '');
+  const parseJudges = (s: string | undefined): string[] => {
+    if (!s?.trim()) return isJudgeMode ? [] : [''];
+    const arr = s.split(',').map((j) => j.trim()).filter(Boolean);
+    return arr.length ? arr : isJudgeMode ? [] : [''];
+  };
+  const [judges, setJudges] = useState<string[]>(() => parseJudges(initial?.judge));
+
+  const addJudge = () => setJudges((prev) => [...prev, '']);
+  const addMeAsJudge = () => setJudges((prev) => [...prev, userDisplayName]);
+  const removeJudge = (i: number) =>
+    setJudges((prev) =>
+      isJudgeMode ? prev.filter((_, idx) => idx !== i) : prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev
+    );
+  const setJudgeAt = (i: number, value: string) =>
+    setJudges((prev) => prev.map((j, idx) => (idx === i ? value : j)));
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -53,6 +75,7 @@ export default function RoundForm({ initial, onSubmit, onCancel, title, isJudgeM
         team_neg: teamNeg.trim(),
         side: 'aff',
         result: null,
+        judge: judges.filter((j) => j.trim()).join(', '),
       });
     } else {
       const myTeam = (teamName ?? '').trim();
@@ -64,6 +87,7 @@ export default function RoundForm({ initial, onSubmit, onCancel, title, isJudgeM
         team_neg: side === 'neg' ? myTeam : opp,
         side,
         result: result === '' ? null : result,
+        judge: judges.filter((j) => j.trim()).join(', '),
       });
     }
   };
@@ -138,6 +162,41 @@ export default function RoundForm({ initial, onSubmit, onCancel, title, isJudgeM
                 />
               </div>
               <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium">Judge</label>
+                  <button
+                    type="button"
+                    onClick={addJudge}
+                    className="text-accent text-sm font-medium hover:underline"
+                    aria-label="Add judge"
+                  >
+                    + Add
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {judges.map((j, i) => (
+                    <div key={i} className="flex gap-2">
+                      <input
+                        value={j}
+                        onChange={(e) => setJudgeAt(i, e.target.value)}
+                        className="flex-1 px-3 py-1.5 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm"
+                        placeholder="Judge name"
+                      />
+                      {judges.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeJudge(i)}
+                          className="px-2 py-1.5 text-foreground/60 hover:text-foreground text-sm"
+                          aria-label="Remove judge"
+                        >
+                          x
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
                 <label className="block text-sm font-medium mb-1">Result</label>
                 <select
                   value={result}
@@ -150,6 +209,55 @@ export default function RoundForm({ initial, onSubmit, onCancel, title, isJudgeM
                 </select>
               </div>
             </>
+          )}
+          {isJudgeMode && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium">Panel</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={addJudge}
+                    className="text-accent text-sm font-medium hover:underline"
+                    aria-label="Add judge"
+                  >
+                    + Add
+                  </button>
+                  {userDisplayName && (
+                    <button
+                      type="button"
+                      onClick={addMeAsJudge}
+                      className="text-accent text-sm font-medium hover:underline"
+                      aria-label="Add me"
+                    >
+                      + Add me
+                    </button>
+                  )}
+                </div>
+              </div>
+              {judges.length > 0 && (
+                <div className="space-y-2">
+                  {judges.map((j, i) => (
+                    <div key={i} className="flex gap-2">
+                      <input
+                        value={j}
+                        onChange={(e) => setJudgeAt(i, e.target.value)}
+                        className="flex-1 px-3 py-1.5 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm"
+                        placeholder="Judge name"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeJudge(i)}
+                        className="px-2 py-1.5 text-foreground/60 hover:text-foreground text-sm"
+                        aria-label="Remove judge"
+                      >
+                        x
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
           <div className="flex gap-2 pt-2">
             <button
