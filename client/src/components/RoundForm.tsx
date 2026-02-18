@@ -36,11 +36,18 @@ export default function RoundForm({ initial, takenRoundNumbers = [], onSubmit, o
   const meta = user?.user_metadata as { first_name?: string; last_name?: string } | undefined;
   const userDisplayName = [meta?.first_name, meta?.last_name].filter(Boolean).join(' ');
 
-  const availableOptions = ROUND_OPTIONS.filter((o) => !takenRoundNumbers.includes(o.value));
+  const baseAvailableOptions = ROUND_OPTIONS.filter((o) => !takenRoundNumbers.includes(o.value));
+  // When editing, always include the current round_number even if outside ROUND_OPTIONS (1-14)
+  const initialRoundNum = initial?.round_number;
+  const initialInOptions = initialRoundNum != null && ROUND_OPTIONS.some((o) => o.value === initialRoundNum);
+  const availableOptions =
+    initialRoundNum != null && !initialInOptions
+      ? [{ value: initialRoundNum, label: `Round ${initialRoundNum}` }, ...baseAvailableOptions]
+      : baseAvailableOptions;
   const noRoundsAvailable = availableOptions.length === 0;
   const validInitial =
-    initial?.round_number != null && availableOptions.some((o) => o.value === initial!.round_number)
-      ? initial!.round_number
+    initialRoundNum != null && availableOptions.some((o) => o.value === initialRoundNum)
+      ? initialRoundNum
       : availableOptions[0]?.value ?? 1;
   const [roundNumber, setRoundNumber] = useState(validInitial);
   const [teamAff, setTeamAff] = useState(

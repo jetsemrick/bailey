@@ -152,9 +152,9 @@ export default function TournamentPage() {
                       .split(r.judge.includes('|') ? '|' : ',')
                       .map((j) => j.trim())
                       .filter(Boolean)
-                      .map((name) => (
+                      .map((name, idx) => (
                         <span
-                          key={name}
+                          key={idx}
                           className="inline-block px-2 py-0.5 rounded bg-card-02 text-xs text-foreground/60"
                         >
                           {name}

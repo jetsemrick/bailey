@@ -392,6 +392,7 @@ export async function importTournament(data: ExportedTournament): Promise<string
       date: data.tournament.date,
       location: data.tournament.location,
       tournament_type: (data.tournament as { tournament_type?: string }).tournament_type ?? 'competitor',
+      team_name: (data.tournament as { team_name?: string | null }).team_name ?? null,
     })
     .select()
     .single();
