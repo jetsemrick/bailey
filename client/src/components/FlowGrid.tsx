@@ -25,6 +25,10 @@ type FlowGridApi = ReturnType<typeof useFlowGrid>;
 
 interface FlowGridProps {
   grid: FlowGridApi;
+  /**
+   * If true, scrolls the grid to the far right on mount.
+   */
+  defaultScrollToEnd?: boolean;
 }
 
 const COLUMN_COLORS: Record<string, string> = {
@@ -194,7 +198,7 @@ function FlowColumn({
 
 // ── Main grid ────────────────────────────────────────────────
 
-export default function FlowGrid({ grid }: FlowGridProps) {
+export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
   const {
     activeFlowId, activeFlow, getCellContent, getCellColor, updateCell, updateCellColor,
     getColumnRowCount, bulkUpdateCells,
@@ -207,6 +211,7 @@ export default function FlowGrid({ grid }: FlowGridProps) {
   const [dragItem, setDragItem] = useState<{ id: string; col: number; row: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(0);
+  const hasScrolledToEndRef = useRef(false);
 
   // Track container height to fill viewport with rows
   useEffect(() => {
@@ -218,6 +223,26 @@ export default function FlowGrid({ grid }: FlowGridProps) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // Handle default scroll to end
+  useEffect(() => {
+    if (defaultScrollToEnd && !hasScrolledToEndRef.current && containerRef.current) {
+      // Small timeout to ensure layout is ready
+      setTimeout(() => {
+        if (containerRef.current) {
+          containerRef.current.scrollLeft = containerRef.current.scrollWidth;
+          hasScrolledToEndRef.current = true;
+        }
+      }, 0);
+    }
+  }, [defaultScrollToEnd, activeFlowId]); // Reset on flow change if needed, or keep ref persistent?
+  // If we want it to scroll right every time we switch flows in split view, we should include activeFlowId.
+  // But usually split view stays active. Let's include activeFlowId so if they switch flows, it jumps to end again which is likely desired for "2AR/2NR focus".
+
+  // Reset scroll ref when mode or flow changes so we can scroll again if needed
+  useEffect(() => {
+    hasScrolledToEndRef.current = false;
+  }, [activeFlowId, defaultScrollToEnd]);
 
   // Clear undo/redo stack and selection when switching flow tabs
   useEffect(() => {

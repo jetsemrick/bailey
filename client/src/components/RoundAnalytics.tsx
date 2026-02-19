@@ -10,9 +10,13 @@ interface RoundAnalyticsProps {
    * to avoid adding extra database columns for what is essentially similar feedback data.
    */
   isJudgeMode?: boolean;
+  /**
+   * When true, render only the "Reason for Decision" textarea in a single vertical column (omit Aff/Neg feedback to save space).
+   */
+  compact?: boolean;
 }
 
-export default function RoundAnalytics({ roundId, isJudgeMode }: RoundAnalyticsProps) {
+export default function RoundAnalytics({ roundId, isJudgeMode, compact }: RoundAnalyticsProps) {
   const [notesAff, setNotesAff] = useState('');
   const [notesNeg, setNotesNeg] = useState('');
   const [notesDecision, setNotesDecision] = useState('');
@@ -97,6 +101,28 @@ export default function RoundAnalytics({ roundId, isJudgeMode }: RoundAnalyticsP
   }
 
   if (isJudgeMode) {
+    if (compact) {
+      return (
+        <div className="flex-1 overflow-auto p-4 w-full mx-auto flex flex-col h-full">
+          <div className="flex-1 flex flex-col min-h-0">
+            <label className="block text-sm font-semibold text-foreground/80 mb-2 uppercase tracking-wide">
+              Reason for Decision
+            </label>
+            <textarea
+              value={notesDecision}
+              onChange={(e) => {
+                setNotesDecision(e.target.value);
+                scheduleSave();
+              }}
+              onBlur={saveNotes}
+              placeholder="Enter your RFD..."
+              className="flex-1 w-full p-4 rounded-lg border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm resize-none leading-relaxed"
+            />
+          </div>
+        </div>
+      );
+    }
+    
     return (
       <div className="flex-1 overflow-auto p-6 w-full mx-auto flex flex-col h-full">
         <div className="flex-1 flex gap-6 min-h-0">

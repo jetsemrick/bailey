@@ -22,7 +22,7 @@ export default function RoundPage() {
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [showNewFlow, setShowNewFlow] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-  const [viewMode, setViewMode] = useState<'flow' | 'analytics'>('flow');
+  const [viewMode, setViewMode] = useState<'flow' | 'analytics' | 'split'>('flow');
 
   useEffect(() => {
     if (!id) return;
@@ -109,10 +109,31 @@ export default function RoundPage() {
             >
               Notes
             </button>
+            {tournament?.tournament_type === 'judge' && (
+              <button
+                onClick={() => setViewMode('split')}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  viewMode === 'split'
+                    ? 'text-accent border-b-2 border-accent -mb-px'
+                    : 'text-foreground/60 hover:text-foreground'
+                }`}
+              >
+                Decision
+              </button>
+            )}
           </div>
 
           {/* Grid area or Analytics */}
-          {viewMode === 'flow' ? (
+          {viewMode === 'split' && id ? (
+            <div className="flex flex-1 overflow-hidden min-h-0">
+              <div className="flex flex-col flex-1 min-w-0 border-r border-card-04">
+                <FlowGrid grid={grid} defaultScrollToEnd />
+              </div>
+              <div className="flex flex-col w-[380px] shrink-0 min-h-0 bg-background">
+                <RoundAnalytics roundId={id} isJudgeMode compact />
+              </div>
+            </div>
+          ) : viewMode === 'flow' ? (
             <FlowGrid grid={grid} />
           ) : grid.activeFlow ? (
             <FlowAnalytics

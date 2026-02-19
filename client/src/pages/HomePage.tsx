@@ -72,6 +72,15 @@ export default function HomePage() {
                 <h3 className="font-medium text-base mb-1 text-foreground group-hover:text-accent transition-colors">
                   {t.name}
                 </h3>
+                <span
+                  className={`inline-block text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded mb-2 ${
+                    t.tournament_type === 'judge'
+                      ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+                      : 'bg-card-03 text-foreground/70'
+                  }`}
+                >
+                  {t.tournament_type === 'judge' ? 'Judge' : 'Competitor'}
+                </span>
                 {t.date && (
                   <div className="text-xs text-foreground/50">
                     {new Date(t.date + 'T00:00:00').toLocaleDateString('en-US', {
