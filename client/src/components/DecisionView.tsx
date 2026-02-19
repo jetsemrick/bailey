@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Flow, FlowCell } from '../db/types';
 import * as api from '../db/api';
 import Cell from './Cell';
@@ -8,7 +8,7 @@ interface DecisionViewProps {
   roundId: string;
 }
 
-export default function DecisionView({ flows, roundId }: DecisionViewProps) {
+export default function DecisionView({ flows }: DecisionViewProps) {
   const [visibleFlowIds, setVisibleFlowIds] = useState<Set<string>>(new Set());
   const [cellsByFlow, setCellsByFlow] = useState<Map<string, Map<string, FlowCell>>>(new Map());
   const [loading, setLoading] = useState(true);
