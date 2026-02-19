@@ -88,7 +88,8 @@ function SortableCell({
       ref={setNodeRef}
       style={style}
       {...restAttributes}
-      className={`relative ${isDragging ? 'opacity-0 pointer-events-none' : ''}`}
+      {...listeners}
+      className={`relative cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-0 pointer-events-none' : ''}`}
       data-cell-id={`${col}:${row}`}
     >
       <Cell
@@ -106,20 +107,6 @@ function SortableCell({
         onStopEditing={onStopEditing}
         onNavigate={onNavigate}
       />
-      <div
-        {...listeners}
-        className="absolute bottom-0 right-0 w-6 h-6 flex items-center justify-center cursor-grab active:cursor-grabbing rounded-bl opacity-40 hover:opacity-70 transition-opacity"
-        title="Drag to reorder"
-      >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" className="text-foreground">
-          <circle cx="9" cy="6" r="1.5" />
-          <circle cx="15" cy="6" r="1.5" />
-          <circle cx="9" cy="12" r="1.5" />
-          <circle cx="15" cy="12" r="1.5" />
-          <circle cx="9" cy="18" r="1.5" />
-          <circle cx="15" cy="18" r="1.5" />
-        </svg>
-      </div>
     </div>
   );
 }
