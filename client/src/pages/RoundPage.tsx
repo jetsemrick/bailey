@@ -6,6 +6,7 @@ import FlowGrid from '../components/FlowGrid';
 import FlowTabs from '../components/FlowTabs';
 import FlowAnalytics from '../components/FlowAnalytics';
 import RoundAnalytics from '../components/RoundAnalytics';
+import DecisionView from '../components/DecisionView';
 import NewFlowDialog from '../components/NewFlowDialog';
 import { useFlowGrid } from '../hooks/useFlowGrid';
 import * as api from '../db/api';
@@ -127,7 +128,7 @@ export default function RoundPage() {
           {viewMode === 'split' && id ? (
             <div className="flex flex-1 overflow-hidden min-h-0">
               <div className="flex flex-col flex-1 min-w-0 border-r border-card-04">
-                <FlowGrid grid={grid} defaultScrollToEnd />
+                <DecisionView flows={grid.flows} roundId={id} />
               </div>
               <div className="flex flex-col w-[380px] shrink-0 min-h-0 bg-background">
                 <RoundAnalytics roundId={id} isJudgeMode compact />
