@@ -188,7 +188,7 @@ export async function listCells(flowId: string): Promise<FlowCell[]> {
 
 export async function upsertCells(
   flowId: string,
-  cells: { column_index: number; row_index: number; content: string; color?: CellColor }[]
+  cells: { column_index: number; row_index: number; content: string; color?: CellColor; comment?: string }[]
 ): Promise<void> {
   const userId = await uid();
   const rows = cells.map((c) => ({
@@ -198,6 +198,7 @@ export async function upsertCells(
     row_index: c.row_index,
     content: c.content,
     color: c.color ?? null,
+    comment: c.comment ?? '',
   }));
   const { error } = await supabase
     .from('flow_cells')
@@ -438,6 +439,7 @@ export async function importTournament(data: ExportedTournament): Promise<string
           row_index: c.row_index,
           content: c.content,
           color: c.color,
+          comment: c.comment ?? '',
         }));
         const { error: cErr } = await supabase.from('flow_cells').insert(cellRows);
         if (cErr) throw cErr;

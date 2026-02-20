@@ -162,8 +162,6 @@ export default function RoundPage() {
           ) : grid.activeFlow ? (
             <FlowAnalytics
               flow={grid.activeFlow}
-              getCellContent={grid.getCellContent}
-              getColumnRowCount={grid.getColumnRowCount}
             />
           ) : grid.flows.length === 0 && id ? (
             <RoundAnalytics roundId={id} isJudgeMode={tournament?.tournament_type === 'judge'} />

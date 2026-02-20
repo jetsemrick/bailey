@@ -17,6 +17,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import Cell, { COLOR_BG, sanitizeHtml } from './Cell';
+import { Trash2, X } from 'lucide-react';
 import { SPEECH_COLUMNS, type CellColor } from '../db/types';
 import type { useFlowGrid } from '../hooks/useFlowGrid';
 import { useUndoRedo } from '../hooks/useUndoRedo';
@@ -59,6 +60,7 @@ function SortableCell({
   id, col, row, content, color, side, onUpdate, onColorChange,
   selected, editing, pendingInput, onClearPendingInput,
   onFocus, onStartEditing, onStopEditing, onNavigate,
+  comment, onContextMenu,
 }: {
   id: string; col: number; row: number; content: string; color: CellColor;
   side: 'aff' | 'neg';
@@ -67,6 +69,8 @@ function SortableCell({
   pendingInput: string | null; onClearPendingInput: () => void;
   onFocus: () => void; onStartEditing: () => void; onStopEditing: () => void;
   onNavigate: (d: 'up' | 'down' | 'left' | 'right') => void;
+  comment: string;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const {
     attributes, listeners, setNodeRef, transform, transition, isDragging,
@@ -93,8 +97,9 @@ function SortableCell({
       style={style}
       {...restAttributes}
       {...listeners}
-      className={`relative cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-0 pointer-events-none' : ''}`}
+      className={`relative cursor-grab active:cursor-grabbing hover:z-50 ${isDragging ? 'opacity-0 pointer-events-none' : ''} ${selected ? 'z-40' : ''}`}
       data-cell-id={`${col}:${row}`}
+      onContextMenu={onContextMenu}
     >
       <Cell
         content={content}
@@ -111,6 +116,18 @@ function SortableCell({
         onStopEditing={onStopEditing}
         onNavigate={onNavigate}
       />
+      {comment && (
+        <div className="absolute top-0 right-0 z-20 group">
+          <div className="absolute top-0 right-0 w-6 h-6 cursor-help" />
+          <div 
+            className="absolute top-0 right-0 w-3 h-3 bg-accent opacity-80 pointer-events-none" 
+            style={{ clipPath: 'polygon(100% 0, 0 0, 100% 100%)' }} 
+          />
+          <div className={`absolute top-5 w-48 p-2 bg-card border border-card-04 rounded shadow-lg text-xs text-foreground whitespace-pre-wrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 ${col <= 1 ? 'right-auto -left-4' : col >= 6 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}>
+            {comment}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -123,6 +140,7 @@ function FlowColumn({
   rowCount,
   getCellContent,
   getCellColor,
+  getCellComment,
   onCellUpdate,
   onColorChange,
   selectedCell,
@@ -133,12 +151,14 @@ function FlowColumn({
   onStartEditing,
   onStopEditing,
   onNavigate,
+  onContextMenu,
 }: {
   dataCol: number;
   label: string;
   rowCount: number;
   getCellContent: (col: number, row: number) => string;
   getCellColor: (col: number, row: number) => CellColor;
+  getCellComment: (col: number, row: number) => string;
   onCellUpdate: (col: number, row: number, content: string) => void;
   onColorChange: (col: number, row: number, color: CellColor) => void;
   selectedCell: { col: number; row: number } | null;
@@ -149,6 +169,7 @@ function FlowColumn({
   onStartEditing: () => void;
   onStopEditing: () => void;
   onNavigate: (from: { col: number; row: number }, dir: 'up' | 'down' | 'left' | 'right') => void;
+  onContextMenu: (e: React.MouseEvent, col: number, row: number) => void;
 }) {
   const side = COLUMN_SIDES[label];
   const isFocusedColumn = selectedCell?.col === dataCol;
@@ -189,6 +210,8 @@ function FlowColumn({
             onStartEditing={onStartEditing}
             onStopEditing={onStopEditing}
             onNavigate={(d) => onNavigate({ col: dataCol, row: rowIdx }, d)}
+            comment={getCellComment(dataCol, rowIdx)}
+            onContextMenu={(e) => onContextMenu(e, dataCol, rowIdx)}
           />
         ))}
       </SortableContext>
@@ -198,14 +221,96 @@ function FlowColumn({
 
 // ── Main grid ────────────────────────────────────────────────
 
+function CommentPopover({
+  rect, onClose, currentComment, onCommentSave, onDelete
+}: {
+  rect: DOMRect;
+  onClose: () => void;
+  currentComment: string;
+  onCommentSave: (comment: string) => void;
+  onDelete: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [commentText, setCommentText] = useState(currentComment);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onCommentSave(commentText);
+      }
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCommentSave(commentText);
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [commentText, onCommentSave]);
+
+  // Handle positioning
+  let top = rect.bottom;
+  let left = rect.left;
+  if (left + 260 > window.innerWidth) left = window.innerWidth - 280;
+  if (top + 120 > window.innerHeight) top = rect.top - 120;
+
+  return (
+    <div
+      ref={menuRef}
+      className="fixed z-50 bg-card border border-card-04 rounded-lg shadow-lg overflow-hidden w-64 flex flex-col p-3 gap-2 bg-card-01"
+      style={{ top, left }}
+    >
+      <div className="flex justify-between items-center">
+        <label className="text-xs font-semibold text-foreground/80">
+          Cell Comment
+        </label>
+        <div className="flex items-center gap-1">
+          <button 
+            onClick={onDelete}
+            className="text-foreground/50 hover:text-red-500 transition-colors p-1"
+            title="Delete comment"
+          >
+            <Trash2 size={14} />
+          </button>
+          <button 
+            onClick={() => onCommentSave(commentText)}
+            className="text-foreground/50 hover:text-foreground transition-colors p-1"
+            title="Close"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+      <textarea
+        autoFocus
+        value={commentText}
+        onChange={(e) => setCommentText(e.target.value)}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            onCommentSave(commentText);
+          }
+        }}
+        className="w-full p-2 bg-background border border-card-04 rounded text-sm resize-none focus:outline-none focus:border-accent"
+        rows={3}
+        placeholder="Add a comment..."
+      />
+    </div>
+  );
+}
+
 export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
   const {
-    activeFlowId, activeFlow, getCellContent, getCellColor, updateCell, updateCellColor,
+    activeFlowId, activeFlow, getCellContent, getCellColor, getCellComment, updateCell, updateCellColor, setCellComment,
     getColumnRowCount, bulkUpdateCells,
   } = grid;
 
   const undoRedo = useUndoRedo();
   const [selectedCell, setSelectedCell] = useState<{ col: number; row: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ col: number; row: number; rect: DOMRect } | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [pendingInput, setPendingInput] = useState<string | null>(null);
   const [dragItem, setDragItem] = useState<{ id: string; col: number; row: number } | null>(null);
@@ -487,6 +592,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
               rowCount={maxRows}
               getCellContent={getCellContent}
               getCellColor={getCellColor}
+              getCellComment={getCellComment}
               onCellUpdate={handleCellUpdate}
               onColorChange={handleColorChange}
               selectedCell={selectedCell}
@@ -500,6 +606,11 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
               onStartEditing={() => setIsEditing(true)}
               onStopEditing={() => setIsEditing(false)}
               onNavigate={navigate}
+              onContextMenu={(e, col, row) => {
+                e.preventDefault();
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                setContextMenu({ col, row, rect });
+              }}
             />
           ))}
         </div>
@@ -523,6 +634,22 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
           );
         })()}
       </DragOverlay>
+
+      {contextMenu && (
+        <CommentPopover
+          rect={contextMenu.rect}
+          onClose={() => setContextMenu(null)}
+          currentComment={getCellComment(contextMenu.col, contextMenu.row)}
+          onCommentSave={(comment) => {
+            setCellComment(contextMenu.col, contextMenu.row, comment);
+            setContextMenu(null);
+          }}
+          onDelete={() => {
+            setCellComment(contextMenu.col, contextMenu.row, '');
+            setContextMenu(null);
+          }}
+        />
+      )}
     </DndContext>
   );
 }
