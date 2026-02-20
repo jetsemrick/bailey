@@ -24,6 +24,7 @@ export default function RoundPage() {
   const [showNewFlow, setShowNewFlow] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [viewMode, setViewMode] = useState<'flow' | 'analytics' | 'split'>('flow');
+  const [rebuttalFocus, setRebuttalFocus] = useState(true);
 
   useEffect(() => {
     if (!id) return;
@@ -122,13 +123,35 @@ export default function RoundPage() {
                 Decision
               </button>
             )}
+            {viewMode === 'split' && (
+              <div className="ml-auto flex items-center gap-2 pr-3">
+                <span className="text-xs text-foreground/50">Rebuttal Focus</span>
+                <button
+                  onClick={() => setRebuttalFocus((v) => !v)}
+                  className={`relative w-8 h-[18px] rounded-full transition-colors ${
+                    rebuttalFocus ? 'bg-accent' : 'bg-card-04'
+                  }`}
+                  aria-label="Toggle rebuttal focus"
+                >
+                  <span
+                    className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${
+                      rebuttalFocus ? 'translate-x-[14px]' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Grid area or Analytics */}
           {viewMode === 'split' && id ? (
             <div className="flex flex-1 overflow-hidden min-h-0">
               <div className="flex flex-col flex-1 min-w-0 border-r border-card-04">
-                <DecisionView flows={grid.flows} roundId={id} />
+                {rebuttalFocus ? (
+                  <DecisionView flows={grid.flows} roundId={id} />
+                ) : (
+                  <FlowGrid grid={grid} defaultScrollToEnd />
+                )}
               </div>
               <div className="flex flex-col w-[380px] shrink-0 min-h-0 bg-background">
                 <RoundAnalytics roundId={id} isJudgeMode compact />
