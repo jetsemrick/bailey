@@ -327,9 +327,12 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
     return () => ro.disconnect();
   }, []);
 
-  // Handle default scroll to end
+  // Handle default scroll to end (reset ref first, then scroll)
   useEffect(() => {
-    if (defaultScrollToEnd && !hasScrolledToEndRef.current && containerRef.current) {
+    // Reset the ref first so we can scroll again on flow/mode changes
+    hasScrolledToEndRef.current = false;
+
+    if (defaultScrollToEnd && containerRef.current) {
       // Small timeout to ensure layout is ready
       setTimeout(() => {
         if (containerRef.current) {
@@ -338,14 +341,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
         }
       }, 0);
     }
-  }, [defaultScrollToEnd, activeFlowId]); // Reset on flow change if needed, or keep ref persistent?
-  // If we want it to scroll right every time we switch flows in split view, we should include activeFlowId.
-  // But usually split view stays active. Let's include activeFlowId so if they switch flows, it jumps to end again which is likely desired for "2AR/2NR focus".
-
-  // Reset scroll ref when mode or flow changes so we can scroll again if needed
-  useEffect(() => {
-    hasScrolledToEndRef.current = false;
-  }, [activeFlowId, defaultScrollToEnd]);
+  }, [defaultScrollToEnd, activeFlowId]);
 
   // Clear undo/redo stack and selection when switching flow tabs
   useEffect(() => {

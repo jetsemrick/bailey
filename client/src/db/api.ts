@@ -372,6 +372,7 @@ export async function importRound(
         row_index: c.row_index,
         content: c.content,
         color: c.color,
+        comment: c.comment ?? '',
       }));
       const { error: cErr } = await supabase.from('flow_cells').insert(cellRows);
       if (cErr) throw cErr;
