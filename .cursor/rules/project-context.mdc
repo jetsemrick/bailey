@@ -1,0 +1,51 @@
+---
+description: Core project context for Bailey
+alwaysApply: true
+---
+
+# Bailey
+
+Bailey is an application for competitive policy debate—used by debaters, coaches, and judges to track, organize, and analyze rounds in real time. It digitizes the process known as "flowing", where participants take structured notes to follow arguments, responses, and evidence across a debate round. The application streamlines workflow previously managed in Word or Excel, providing a specialized web interface optimized for debate.
+
+## About Policy Debate
+
+Policy debate is a fast-paced, research-heavy competitive activity common in high schools and colleges. Teams of two debate a specific policy resolution each year, with a set sequence of constructive speeches and rebuttals. Each side (Affirmative/Negative) constructs elaborate arguments and responds to their opponents, requiring careful note-taking—"flowing"—to track claims, warrants, evidence, and refutations over multiple speeches. The flow is both an organizational tool and a strategic map, helping debaters develop, clash, and extend arguments. Robust flowing is vital to competitive success.
+
+## Tech Stack
+
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS
+- **Backend**: Supabase (PostgreSQL + Auth + Row Level Security)
+- **Package Manager**: Bun
+- **Libraries**: @dnd-kit (drag-and-drop), lucide-react (icons), react-router-dom v7
+
+## Project Layout
+
+```
+client/src/
+  auth/        # Auth context, login/signup pages
+  db/          # Supabase client, API layer (api.ts), types (types.ts), schema SQL, migrations
+  hooks/       # Custom React hooks (useTournaments, useRounds, useFlowGrid, useTimer, useUndoRedo)
+  components/  # Reusable UI components
+  pages/       # Route-level page components
+```
+
+## Domain Model
+
+Bailey's core data model mirrors the structure of a policy debate tournament:
+
+- **Tournaments**: Collections of debate rounds under an event umbrella.
+- **Rounds**: Individual debate rounds, each with assigned teams, judges, and settings.
+- **Flow Tabs**: Each round can have multiple "tabs" (sheets) for flowing different off-case or policy arguments.
+- **Flow Cells**: The smallest units, representing content within the flow grid at a given speech and argument position.
+
+Four Supabase tables with Row Level Security (RLS) enforce this hierarchy: `tournaments` > `rounds` > `flow_tabs` > `flow_cells`.
+
+The flow grid is structured around the 8 speech order of policy debate: 1AC, 1NC, 2AC, 2NC, 1NR, 1AR, 2NR, 2AR—matching how arguments evolve through each speech. Cells offer rich-text features including bold, underline, and color highlights (yellow, green, blue) to emphasize argument status, extensions, or dropped points.
+
+## Key Conventions
+
+- Functional components only, strict TypeScript (`strict: true`, `noUnusedLocals`, `noUnusedParameters`)
+- Custom hooks encapsulate API calls and state; return `{ data, loading, error, reload, create, update, remove }`
+- API functions live in `client/src/db/api.ts`, types in `client/src/db/types.ts`
+- Database migrations in `client/src/db/migrations/` as numbered SQL files
+- Dev server: `bun run dev` at http://localhost:3000

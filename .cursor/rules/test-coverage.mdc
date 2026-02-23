@@ -1,0 +1,22 @@
+---
+description: Ensure test coverage when adding or changing API endpoints
+globs: 
+  - client/src/db/api.ts
+  - client/src/db/hooks/*.ts
+alwaysApply: true
+---
+
+# Test Coverage
+
+When adding a new API endpoint or modifying an existing one in `client/src/db/api.ts`:
+
+1. Check if a test file exists for the module (e.g. `api.test.ts`)
+2. If tests exist, add or update test cases covering the new/changed function
+3. If no test file exists yet, create one alongside the source file
+
+When adding or modifying a custom hook in `client/src/hooks/`:
+
+1. Check for a corresponding test file (e.g. `useRounds.test.ts`)
+2. Add or update tests for new behavior, especially CRUD operations and error handling
+
+Test files live next to the source file they cover. Use the project's configured test runner.

@@ -1,0 +1,50 @@
+---
+description: Supabase database and API layer conventions
+globs: client/src/db/**
+alwaysApply: false
+---
+
+# Supabase / DB Conventions
+
+## Triple Sync
+
+When changing persisted data, keep three files in sync:
+
+1. **`types.ts`** -- TypeScript interfaces and type aliases
+2. **`api.ts`** -- Supabase query functions
+3. **`schema.sql`** / **`migrations/`** -- Database schema
+
+If you add a column, add the field to the interface in `types.ts`, update any relevant API functions in `api.ts`, and create a migration in `migrations/`.
+
+## API Function Pattern
+
+```typescript
+export async function createFoo(
+  parentId: string,
+  fields: Partial<Pick<Foo, 'field_a' | 'field_b'>>
+): Promise<Foo> {
+  const userId = await uid();
+  const { data, error } = await supabase
+    .from('foos')
+    .insert({ user_id: userId, parent_id: parentId, ...fields })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+```
+
+- Always call `uid()` for inserts to set `user_id`
+- Always `.select().single()` after insert/update to return the created/updated row
+- Throw the Supabase error directly; hooks handle display
+- Use `Pick` / `Partial<Pick<>>` for field params, not loose object types
+
+## Row Level Security
+
+All tables use RLS scoped to `auth.uid()`. Never bypass RLS from the client. If a query returns empty when data exists, check that the user is authenticated and the RLS policy covers the operation.
+
+## Migrations
+
+- File pattern: `client/src/db/migrations/NNN_description.sql`
+- Use `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for safety
+- Apply via Supabase SQL Editor (Dashboard > SQL Editor)
