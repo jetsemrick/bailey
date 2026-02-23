@@ -43,7 +43,7 @@ export default function TournamentForm({ initial, onSubmit, onCancel, title }: T
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full px-3 py-1.5 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm"
-              placeholder="e.g., Harvard 2025"
+              placeholder="Kansas Invitational"
             />
           </div>
           <div>
@@ -64,7 +64,7 @@ export default function TournamentForm({ initial, onSubmit, onCancel, title }: T
                 value={teamName}
                 onChange={(e) => setTeamName(e.target.value)}
                 className="w-full px-3 py-1.5 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm"
-                placeholder="e.g., Kansas PS"
+                placeholder="Kansas PS"
               />
             </div>
           )}
@@ -83,7 +83,7 @@ export default function TournamentForm({ initial, onSubmit, onCancel, title }: T
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               className="w-full px-3 py-1.5 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm"
-              placeholder="e.g., Cambridge, MA"
+              placeholder="Lawrence, KS"
             />
           </div>
           <div className="flex gap-2 pt-2">

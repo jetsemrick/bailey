@@ -8,3 +8,4 @@ build/
 client/dist/
 client/node_modules/
 package-lock.json
+supabase/.temp/

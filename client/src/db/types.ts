@@ -107,6 +107,7 @@ export interface FlowCell {
   row_index: number;
   content: string;
   color: CellColor;
+  comment: string;
   created_at: string;
   updated_at: string;
 }

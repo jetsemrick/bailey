@@ -65,6 +65,7 @@ CREATE TABLE flow_cells (
   row_index integer NOT NULL CHECK (row_index >= 0),
   content text DEFAULT '',
   color text CHECK (color IN ('yellow', 'green', 'blue') OR color IS NULL),
+  comment text DEFAULT '',
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
   UNIQUE(flow_id, column_index, row_index)

@@ -67,10 +67,13 @@ export default function RoundForm({ initial, takenRoundNumbers = [], onSubmit, o
     const arr = s.split(delimiter).map((j) => j.trim()).filter(Boolean);
     return arr.length ? arr : isJudgeMode ? [] : [''];
   };
-  const [judges, setJudges] = useState<string[]>(() => parseJudges(initial?.judge));
+  const [judges, setJudges] = useState<string[]>(() => {
+    const parsed = parseJudges(initial?.judge);
+    if (isJudgeMode && userDisplayName) return parsed.filter((j) => j.trim() !== userDisplayName);
+    return parsed;
+  });
 
   const addJudge = () => setJudges((prev) => [...prev, '']);
-  const addMeAsJudge = () => setJudges((prev) => [...prev, userDisplayName]);
   const removeJudge = (i: number) =>
     setJudges((prev) =>
       isJudgeMode ? prev.filter((_, idx) => idx !== i) : prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev
@@ -81,6 +84,7 @@ export default function RoundForm({ initial, takenRoundNumbers = [], onSubmit, o
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (isJudgeMode) {
+      const allJudges = (userDisplayName ? [userDisplayName, ...judges] : judges).filter((j) => j.trim());
       onSubmit({
         round_number: roundNumber,
         opponent: '',
@@ -88,7 +92,7 @@ export default function RoundForm({ initial, takenRoundNumbers = [], onSubmit, o
         team_neg: teamNeg.trim(),
         side: 'aff',
         result: null,
-        judge: judges.filter((j) => j.trim()).join(' | '),
+        judge: allJudges.join(' | '),
       });
     } else {
       const myTeam = (teamName ?? '').trim();
@@ -183,7 +187,7 @@ export default function RoundForm({ initial, takenRoundNumbers = [], onSubmit, o
                   value={opponent}
                   onChange={(e) => setOpponent(e.target.value)}
                   className="w-full px-3 py-1.5 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm"
-                  placeholder="e.g., Harvard KS"
+                  placeholder="Kansas PS"
                 />
               </div>
               <div>
@@ -239,26 +243,14 @@ export default function RoundForm({ initial, takenRoundNumbers = [], onSubmit, o
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-sm font-medium">Panel</label>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={addJudge}
-                    className="text-accent text-sm font-medium hover:underline"
-                    aria-label="Add judge"
-                  >
-                    + Add
-                  </button>
-                  {userDisplayName && (
-                    <button
-                      type="button"
-                      onClick={addMeAsJudge}
-                      className="text-accent text-sm font-medium hover:underline"
-                      aria-label="Add me"
-                    >
-                      + Add me
-                    </button>
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={addJudge}
+                  className="text-accent text-sm font-medium hover:underline"
+                  aria-label="Add judge"
+                >
+                  + Add
+                </button>
               </div>
               {judges.length > 0 && (
                 <div className="space-y-2">

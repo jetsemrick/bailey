@@ -6,6 +6,7 @@ import FlowGrid from '../components/FlowGrid';
 import FlowTabs from '../components/FlowTabs';
 import FlowAnalytics from '../components/FlowAnalytics';
 import RoundAnalytics from '../components/RoundAnalytics';
+import DecisionView from '../components/DecisionView';
 import NewFlowDialog from '../components/NewFlowDialog';
 import { useFlowGrid } from '../hooks/useFlowGrid';
 import * as api from '../db/api';
@@ -22,7 +23,8 @@ export default function RoundPage() {
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [showNewFlow, setShowNewFlow] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-  const [viewMode, setViewMode] = useState<'flow' | 'analytics'>('flow');
+  const [viewMode, setViewMode] = useState<'flow' | 'analytics' | 'split'>('flow');
+  const [rebuttalFocus, setRebuttalFocus] = useState(true);
 
   useEffect(() => {
     if (!id) return;
@@ -109,16 +111,57 @@ export default function RoundPage() {
             >
               Notes
             </button>
+            {tournament?.tournament_type === 'judge' && (
+              <button
+                onClick={() => setViewMode('split')}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  viewMode === 'split'
+                    ? 'text-accent border-b-2 border-accent -mb-px'
+                    : 'text-foreground/60 hover:text-foreground'
+                }`}
+              >
+                Decision
+              </button>
+            )}
+            {viewMode === 'split' && (
+              <div className="ml-auto flex items-center gap-2 pr-3">
+                <span className="text-xs text-foreground/50">Rebuttal Focus</span>
+                <button
+                  onClick={() => setRebuttalFocus((v) => !v)}
+                  className={`relative w-8 h-[18px] rounded-full transition-colors ${
+                    rebuttalFocus ? 'bg-accent' : 'bg-card-04'
+                  }`}
+                  aria-label="Toggle rebuttal focus"
+                >
+                  <span
+                    className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${
+                      rebuttalFocus ? 'translate-x-[14px]' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Grid area or Analytics */}
-          {viewMode === 'flow' ? (
+          {viewMode === 'split' && id ? (
+            <div className="flex flex-1 overflow-hidden min-h-0">
+              <div className="flex flex-col flex-1 min-w-0 border-r border-card-04">
+                {rebuttalFocus ? (
+                  <DecisionView flows={grid.flows} roundId={id} />
+                ) : (
+                  <FlowGrid grid={grid} defaultScrollToEnd />
+                )}
+              </div>
+              <div className="flex flex-col w-[380px] shrink-0 min-h-0 bg-background">
+                <RoundAnalytics roundId={id} isJudgeMode compact />
+              </div>
+            </div>
+          ) : viewMode === 'flow' ? (
             <FlowGrid grid={grid} />
           ) : grid.activeFlow ? (
             <FlowAnalytics
               flow={grid.activeFlow}
-              getCellContent={grid.getCellContent}
-              getColumnRowCount={grid.getColumnRowCount}
             />
           ) : grid.flows.length === 0 && id ? (
             <RoundAnalytics roundId={id} isJudgeMode={tournament?.tournament_type === 'judge'} />

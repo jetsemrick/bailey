@@ -4,8 +4,6 @@ import type { Flow } from '../db/types';
 
 interface FlowAnalyticsProps {
   flow: Flow;
-  getCellContent: (col: number, row: number) => string;
-  getColumnRowCount: (col: number) => number;
 }
 
 export default function FlowAnalytics({ flow }: FlowAnalyticsProps) {

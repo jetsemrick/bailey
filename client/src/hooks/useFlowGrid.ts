@@ -12,7 +12,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const [error, setError] = useState<string | null>(null);
 
   // Dirty cells awaiting save
-  const dirtyRef = useRef<Map<string, { column_index: number; row_index: number; content: string; color: CellColor }>>(new Map());
+  const dirtyRef = useRef<Map<string, { column_index: number; row_index: number; content: string; color: CellColor; comment: string }>>(new Map());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // -- Load flows for the round --
@@ -142,6 +142,44 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     [cells]
   );
 
+  const getCellComment = useCallback(
+    (col: number, row: number): string => cells.get(`${col}:${row}`)?.comment ?? '',
+    [cells]
+  );
+
+  const setCellComment = useCallback(
+    (col: number, row: number, comment: string) => {
+      if (!activeFlowId) return;
+      const key = `${col}:${row}`;
+
+      setCells((prev) => {
+        const existing = prev.get(key);
+        const content = existing?.content ?? '';
+        const color = existing?.color ?? null;
+        
+        const next = new Map(prev);
+        next.set(key, {
+          id: existing?.id ?? '',
+          user_id: existing?.user_id ?? '',
+          flow_id: activeFlowId,
+          column_index: col,
+          row_index: row,
+          content,
+          color,
+          comment,
+          created_at: existing?.created_at ?? new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+
+        dirtyRef.current.set(key, { column_index: col, row_index: row, content, color, comment });
+        return next;
+      });
+
+      scheduleSave();
+    },
+    [activeFlowId, scheduleSave]
+  );
+
   const updateCell = useCallback(
     (col: number, row: number, content: string, color?: CellColor) => {
       if (!activeFlowId) return;
@@ -159,12 +197,13 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
           row_index: row,
           content,
           color: cellColor,
+          comment: existing?.comment ?? '',
           created_at: existing?.created_at ?? new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
 
         // Track dirty cell for auto-save
-        dirtyRef.current.set(key, { column_index: col, row_index: row, content, color: cellColor });
+        dirtyRef.current.set(key, { column_index: col, row_index: row, content, color: cellColor, comment: existing?.comment ?? '' });
         return next;
       });
 
@@ -183,13 +222,14 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
 
   // -- Bulk cell operations (for drag-and-drop reindex) --
   const bulkUpdateCells = useCallback(
-    (updates: { col: number; row: number; content: string; color: CellColor }[]) => {
+    (updates: { col: number; row: number; content: string; color: CellColor; comment?: string }[]) => {
       if (!activeFlowId) return;
       setCells((prev) => {
         const next = new Map(prev);
         for (const u of updates) {
           const key = `${u.col}:${u.row}`;
           const existing = next.get(key);
+          const comment = u.comment !== undefined ? u.comment : (existing?.comment ?? '');
           next.set(key, {
             id: existing?.id ?? '',
             user_id: existing?.user_id ?? '',
@@ -198,6 +238,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
             row_index: u.row,
             content: u.content,
             color: u.color,
+            comment: comment,
             created_at: existing?.created_at ?? new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
@@ -206,6 +247,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
             row_index: u.row,
             content: u.content,
             color: u.color,
+            comment: comment,
           });
         }
         return next;
@@ -295,6 +337,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     getCell,
     getCellContent,
     getCellColor,
+    getCellComment,
+    setCellComment,
     updateCell,
     updateCellColor,
     bulkUpdateCells,
