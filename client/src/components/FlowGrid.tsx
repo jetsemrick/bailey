@@ -221,10 +221,9 @@ function FlowColumn({
 // ── Main grid ────────────────────────────────────────────────
 
 function CommentPopover({
-  rect, onClose, currentComment, onCommentSave, onDelete
+  rect, currentComment, onCommentSave, onDelete
 }: {
   rect: DOMRect;
-  onClose: () => void;
   currentComment: string;
   onCommentSave: (comment: string) => void;
   onDelete: () => void;
@@ -649,7 +648,6 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
       {contextMenu && (
         <CommentPopover
           rect={contextMenu.rect}
-          onClose={() => setContextMenu(null)}
           currentComment={getCellComment(contextMenu.col, contextMenu.row)}
           onCommentSave={(comment) => {
             setCellComment(contextMenu.col, contextMenu.row, comment);
