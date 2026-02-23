@@ -7,7 +7,7 @@ description: Create commits with conventional commit messages. Analyzes staged c
 
 ## When to Apply
 
-- User asks to commit staged changes
+- User asks to commit (staged or unstaged changes)
 - User wants a commit message or to create a commit
 - User asks to review or summarize what will be committed (then offer to commit)
 
@@ -35,10 +35,11 @@ docs: update README setup
 
 ## Workflow
 
-1. Run `git diff --staged` and `git status` to see staged changes
-2. Infer type and scope from the changes
-3. Write a single-line subject in imperative mood
-4. Run `git commit -m "<message>"` to create the commit
+1. Run `git status` and `git diff --staged` to see staged changes
+2. If nothing is staged but there are modified files, run `git add` for the modified files (or all with `git add -u`) before committing
+3. Infer type and scope from the changes
+4. Write a single-line subject in imperative mood
+5. Run `git commit -m "<message>"` to create the commit
 
 ## Rules
 
