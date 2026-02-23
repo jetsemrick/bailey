@@ -120,8 +120,7 @@ function SortableCell({
         <div className="absolute top-0 right-0 z-20 group">
           <div className="absolute top-0 right-0 w-6 h-6 cursor-help" />
           <div 
-            className="absolute top-0 right-0 w-3 h-3 bg-accent opacity-80 pointer-events-none" 
-            style={{ clipPath: 'polygon(100% 0, 0 0, 100% 100%)' }} 
+            className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent/60 shadow-sm pointer-events-none ring-1 ring-background" 
           />
           <div className={`absolute top-5 w-48 p-2 bg-card border border-card-04 rounded shadow-lg text-xs text-foreground whitespace-pre-wrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 ${col <= 1 ? 'right-auto -left-4' : col >= 6 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}>
             {comment}
@@ -289,7 +288,7 @@ function CommentPopover({
         onChange={(e) => setCommentText(e.target.value)}
         onKeyDown={(e) => {
           e.stopPropagation();
-          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
             e.preventDefault();
             onCommentSave(commentText);
           }
@@ -539,32 +538,36 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
 
       // Same column: reorder
       if (fromCol === toCol) {
-        const colRows: { row: number; content: string; color: CellColor }[] = [];
+        const colRows: { row: number; content: string; color: CellColor; comment: string }[] = [];
         for (let r = 0; r < maxRows; r++) {
           colRows.push({
             row: r,
             content: getCellContent(fromCol, r),
             color: getCellColor(fromCol, r),
+            comment: getCellComment(fromCol, r),
           });
         }
         const [moved] = colRows.splice(fromRow, 1);
         colRows.splice(toRow, 0, moved);
         const updates = colRows.map((c, i) => ({
-          col: fromCol, row: i, content: c.content, color: c.color,
+          col: fromCol, row: i, content: c.content, color: c.color, comment: c.comment,
         }));
         bulkUpdateCells(updates);
       } else {
         // Cross-column move
         const content = getCellContent(fromCol, fromRow);
         const color = getCellColor(fromCol, fromRow);
+        const comment = getCellComment(fromCol, fromRow);
         updateCell(fromCol, fromRow, '', null);
+        setCellComment(fromCol, fromRow, '');
         updateCell(toCol, toRow, content, color);
+        setCellComment(toCol, toRow, comment);
       }
 
       // Keep focus on the moved cell so keyboard editing continues at new position.
       setSelectedCell({ col: toCol, row: toRow });
     },
-    [getCellContent, getCellColor, maxRows, bulkUpdateCells, updateCell]
+    [getCellContent, getCellColor, getCellComment, maxRows, bulkUpdateCells, updateCell, setCellComment]
   );
 
   if (!activeFlowId) {
@@ -620,6 +623,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
         {dragItem && (() => {
           const content = getCellContent(dragItem.col, dragItem.row) || '';
           const color = getCellColor(dragItem.col, dragItem.row);
+          const comment = getCellComment(dragItem.col, dragItem.row);
           if (!content.trim()) return null;
           const label = flowColumns.find((c) => c.dataCol === dragItem.col)?.label;
           const side = label ? COLUMN_SIDES[label] : 'aff';
@@ -627,10 +631,17 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
           const sideTextColor = side === 'aff' ? 'text-blue-600 dark:text-blue-400' : side === 'neg' ? 'text-red-600 dark:text-red-400' : 'text-foreground';
           return (
             <div
-              className={`pointer-events-none min-w-[100px] min-h-[28px] p-1 whitespace-pre-wrap break-words rounded shadow border border-card-04 bg-card ${sideTextColor} ${colorClass}`}
+              className={`pointer-events-none relative min-w-[100px] min-h-[28px] p-1 whitespace-pre-wrap break-words rounded shadow border border-card-04 bg-card ${sideTextColor} ${colorClass}`}
               style={{ fontSize: 'var(--cell-font-size, 14px)' }}
-              dangerouslySetInnerHTML={{ __html: sanitizeHtml(content) }}
-            />
+            >
+              <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(content) }} />
+              {comment && (
+                <div
+                  className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent/60 shadow-sm ring-1 ring-background"
+                  aria-hidden="true"
+                />
+              )}
+            </div>
           );
         })()}
       </DragOverlay>
