@@ -2,12 +2,15 @@ import { useState, type FormEvent } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 
+const REQUIRED_ACCESS_CODE = import.meta.env.VITE_SIGNUP_ACCESS_CODE?.trim() || '';
+
 export default function SignupPage() {
   const { user, signUp, loading } = useAuth();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -27,6 +30,10 @@ export default function SignupPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (REQUIRED_ACCESS_CODE && accessCode !== REQUIRED_ACCESS_CODE) {
+      setError('Invalid access code');
+      return;
+    }
     setSubmitting(true);
     const { error: err } = await signUp(email, password, firstName, lastName);
     setSubmitting(false);
@@ -120,6 +127,23 @@ export default function SignupPage() {
               placeholder="Min 6 characters"
             />
           </div>
+
+          {REQUIRED_ACCESS_CODE && (
+            <div>
+              <label htmlFor="accessCode" className="block text-sm font-medium text-foreground mb-1">
+                Access code
+              </label>
+              <input
+                id="accessCode"
+                type="text"
+                required
+                value={accessCode}
+                onChange={(e) => setAccessCode(e.target.value)}
+                className="w-full px-3 py-2 rounded border border-card-04 bg-card text-foreground focus:outline-none focus:border-accent"
+                placeholder="Enter access code"
+              />
+            </div>
+          )}
 
           {error && <p className="text-red-500 text-sm">{error}</p>}
 
