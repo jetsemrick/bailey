@@ -479,9 +479,9 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
         grid.saveNow();
       }
       // Arrow key navigation when cell is selected but not editing
-      // Skip if user is focused on an input/textarea element elsewhere on the page
+      // Skip if user is focused on an input/textarea/contenteditable element
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || (target.isContentEditable && !containerRef.current?.contains(target))) {
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         return;
       }
       if (selectedCell && !isEditing) {
