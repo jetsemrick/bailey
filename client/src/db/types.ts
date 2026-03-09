@@ -1,5 +1,15 @@
 export type TournamentType = 'judge' | 'competitor';
 
+export type UserRole = 'Admin' | 'User';
+
+export interface Profile {
+  id: string;
+  email: string;
+  role: UserRole;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Tournament {
   id: string;
   user_id: string;

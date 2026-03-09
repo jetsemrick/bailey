@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { Tournament, Round, Flow, FlowCell, FlowAnalytics, RoundAnalytics, CellColor } from './types';
+import type { Tournament, Round, Flow, FlowCell, FlowAnalytics, RoundAnalytics, CellColor, Profile } from './types';
 
 // ── helpers ──────────────────────────────────────────────────
 
@@ -449,4 +449,51 @@ export async function importTournament(data: ExportedTournament): Promise<string
   }
 
   return newTournament.id;
+}
+
+// ── Admin API ─────────────────────────────────────────────────
+
+export async function listAllProfiles(): Promise<Profile[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getProfile(userId: string): Promise<Profile | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export interface UsageStats {
+  totalUsers: number;
+  totalTournaments: number;
+  totalRounds: number;
+  totalFlowTabs: number;
+  totalFlowCells: number;
+}
+
+export async function getUsageStats(): Promise<UsageStats> {
+  const [profiles, tournaments, rounds, flowTabs, flowCells] = await Promise.all([
+    supabase.from('profiles').select('id', { count: 'exact', head: true }),
+    supabase.from('tournaments').select('id', { count: 'exact', head: true }),
+    supabase.from('rounds').select('id', { count: 'exact', head: true }),
+    supabase.from('flow_tabs').select('id', { count: 'exact', head: true }),
+    supabase.from('flow_cells').select('id', { count: 'exact', head: true }),
+  ]);
+
+  return {
+    totalUsers: profiles.count ?? 0,
+    totalTournaments: tournaments.count ?? 0,
+    totalRounds: rounds.count ?? 0,
+    totalFlowTabs: flowTabs.count ?? 0,
+    totalFlowCells: flowCells.count ?? 0,
+  };
 }

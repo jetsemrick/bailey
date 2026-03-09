@@ -17,7 +17,7 @@ interface LayoutProps {
 }
 
 export default function Layout({ children, breadcrumbs, headerActions }: LayoutProps) {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const location = useLocation();
 
@@ -96,6 +96,14 @@ export default function Layout({ children, breadcrumbs, headerActions }: LayoutP
                         <div className="truncate text-foreground/40">{user.email}</div>
                       )}
                     </div>
+                    {isAdmin && (
+                      <Link
+                        to="/admin"
+                        className="block w-full text-left px-3 py-2 text-sm hover:bg-card-02 transition-colors"
+                      >
+                        Admin Dashboard
+                      </Link>
+                    )}
                     <button
                       onClick={signOut}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-card-02 transition-colors"
