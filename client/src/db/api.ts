@@ -1,5 +1,16 @@
 import { supabase } from './supabase';
-import type { Tournament, Round, Flow, FlowCell, FlowAnalytics, RoundAnalytics, CellColor } from './types';
+import type {
+  Tournament,
+  Round,
+  Flow,
+  FlowCell,
+  FlowAnalytics,
+  RoundAnalytics,
+  CellColor,
+  Profile,
+  AdminUserSummary,
+  PlatformUsageMetrics,
+} from './types';
 
 // ── helpers ──────────────────────────────────────────────────
 
@@ -7,6 +18,55 @@ async function uid(): Promise<string> {
   const { data } = await supabase.auth.getUser();
   if (!data.user) throw new Error('Not authenticated');
   return data.user.id;
+}
+
+function toCount(value: number | string | null | undefined): number {
+  return typeof value === 'number' ? value : Number(value ?? 0);
+}
+
+export async function getCurrentProfile(): Promise<Profile | null> {
+  const userId = await uid();
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function listAdminUserSummaries(): Promise<AdminUserSummary[]> {
+  const { data, error } = await supabase.rpc('get_admin_user_summaries');
+  if (error) throw error;
+  const rows = (data ?? []) as Array<Partial<AdminUserSummary>>;
+  return rows.map((row) => ({
+    ...row,
+    tournament_count: toCount(row.tournament_count),
+    round_count: toCount(row.round_count),
+    flow_count: toCount(row.flow_count),
+    cell_count: toCount(row.cell_count),
+    analytics_count: toCount(row.analytics_count),
+  })) as AdminUserSummary[];
+}
+
+export async function getPlatformUsageMetrics(): Promise<PlatformUsageMetrics> {
+  const { data, error } = await supabase
+    .rpc('get_platform_usage_metrics')
+    .single();
+  if (error) throw error;
+  const row = data as Record<string, number | string | null>;
+  return {
+    total_users: toCount(row.total_users),
+    admin_users: toCount(row.admin_users),
+    active_users: toCount(row.active_users),
+    total_tournaments: toCount(row.total_tournaments),
+    total_rounds: toCount(row.total_rounds),
+    total_flow_tabs: toCount(row.total_flow_tabs),
+    total_flow_cells: toCount(row.total_flow_cells),
+    total_analytics_entries: toCount(row.total_analytics_entries),
+    most_recent_activity_at:
+      typeof row.most_recent_activity_at === 'string' ? row.most_recent_activity_at : null,
+  };
 }
 
 // ── Tournaments ──────────────────────────────────────────────

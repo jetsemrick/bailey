@@ -1,11 +1,13 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import AuthGuard from './auth/AuthGuard';
+import AdminGuard from './auth/AdminGuard';
 import LoginPage from './auth/LoginPage';
 import SignupPage from './auth/SignupPage';
 import HomePage from './pages/HomePage';
 import TournamentPage from './pages/TournamentPage';
 import RoundPage from './pages/RoundPage';
+import AdminDashboardPage from './pages/AdminDashboardPage';
 
 export default function App() {
   return (
@@ -36,6 +38,14 @@ export default function App() {
               <AuthGuard>
                 <RoundPage />
               </AuthGuard>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <AdminGuard>
+                <AdminDashboardPage />
+              </AdminGuard>
             }
           />
         </Routes>
