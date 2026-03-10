@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  getPasswordResetRedirectUrl,
   handlePasswordResetCallback,
   hasAuthCallbackParams,
   parseAuthCallbackParams,
@@ -16,6 +17,10 @@ function createAuthClient(overrides?: Partial<PasswordResetAuthClient>): Passwor
 }
 
 describe('parseAuthCallbackParams', () => {
+  test('builds password reset redirect URL at /auth', () => {
+    expect(getPasswordResetRedirectUrl('http://localhost:3000')).toBe('http://localhost:3000/auth');
+  });
+
   test('parses recovery flow from hash fragment', () => {
     const parsed = parseAuthCallbackParams(
       'http://localhost:3000/auth#access_token=abc123&type=recovery'
