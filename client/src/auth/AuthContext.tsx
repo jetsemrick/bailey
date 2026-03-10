@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../db/supabase';
+import { getPasswordResetRedirectUrl } from './passwordReset';
 
 interface AuthState {
   user: User | null;
@@ -8,6 +9,8 @@ interface AuthState {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<{ error: string | null }>;
+  sendPasswordResetEmail: (email: string) => Promise<{ error: string | null }>;
+  requestPasswordReset: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -52,12 +55,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null };
   };
 
+  const sendPasswordResetEmail = async (email: string) => {
+    const redirectTo =
+      typeof window !== 'undefined' ? getPasswordResetRedirectUrl(window.location.origin) : undefined;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      email,
+      redirectTo ? { redirectTo } : undefined
+    );
+
+    return { error: error?.message ?? null };
+  };
+
+  const requestPasswordReset = async () => {
+    if (!user?.email) {
+      return { error: 'No email found for this account.' };
+    }
+
+    return sendPasswordResetEmail(user.email);
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        session,
+        loading,
+        signIn,
+        signUp,
+        sendPasswordResetEmail,
+        requestPasswordReset,
+        signOut,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
