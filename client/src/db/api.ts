@@ -35,8 +35,14 @@ export async function getCurrentProfile(): Promise<Profile | null> {
   return data;
 }
 
-export async function listAdminUserSummaries(): Promise<AdminUserSummary[]> {
-  const { data, error } = await supabase.rpc('get_admin_user_summaries');
+export async function listAdminUserSummaries(
+  pageLimit = 100,
+  pageOffset = 0
+): Promise<AdminUserSummary[]> {
+  const { data, error } = await supabase.rpc('get_admin_user_summaries', {
+    page_limit: pageLimit,
+    page_offset: pageOffset,
+  });
   if (error) throw error;
   const rows = (data ?? []) as Array<Partial<AdminUserSummary>>;
   return rows.map((row) => ({

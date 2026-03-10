@@ -37,7 +37,7 @@ BEGIN
     NEW.id,
     NEW.email,
     CASE
-      WHEN lower(NEW.email) = 'jet.semrick@gmail.com' THEN 'Admin'::public.user_role
+      WHEN public.is_admin_email(NEW.email) THEN 'Admin'::public.user_role
       ELSE 'User'::public.user_role
     END
   )
@@ -45,7 +45,7 @@ BEGIN
   SET
     email = EXCLUDED.email,
     role = CASE
-      WHEN lower(EXCLUDED.email) = 'jet.semrick@gmail.com' THEN 'Admin'::public.user_role
+      WHEN public.is_admin_email(EXCLUDED.email) THEN 'Admin'::public.user_role
       ELSE profiles.role
     END,
     updated_at = now();
@@ -59,7 +59,7 @@ SELECT
   users.id,
   users.email,
   CASE
-    WHEN lower(users.email) = 'jet.semrick@gmail.com' THEN 'Admin'::public.user_role
+    WHEN public.is_admin_email(users.email) THEN 'Admin'::public.user_role
     ELSE 'User'::public.user_role
   END
 FROM auth.users AS users
@@ -68,7 +68,7 @@ ON CONFLICT (id) DO UPDATE
 SET
   email = EXCLUDED.email,
   role = CASE
-    WHEN lower(EXCLUDED.email) = 'jet.semrick@gmail.com' THEN 'Admin'::public.user_role
+    WHEN public.is_admin_email(EXCLUDED.email) THEN 'Admin'::public.user_role
     ELSE profiles.role
   END,
   updated_at = now();

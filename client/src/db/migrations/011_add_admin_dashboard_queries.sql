@@ -3,7 +3,10 @@ CREATE TRIGGER profiles_updated_at
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
-CREATE OR REPLACE FUNCTION public.get_admin_user_summaries()
+CREATE OR REPLACE FUNCTION public.get_admin_user_summaries(
+  page_limit integer DEFAULT 100,
+  page_offset integer DEFAULT 0
+)
 RETURNS TABLE (
   id uuid,
   email text,
@@ -82,7 +85,9 @@ BEGIN
   ) AS ra ON true
   ORDER BY
     CASE WHEN p.role = 'Admin' THEN 0 ELSE 1 END,
-    p.created_at DESC;
+    p.created_at DESC
+  LIMIT page_limit
+  OFFSET page_offset;
 END;
 $$;
 
@@ -141,5 +146,5 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.get_admin_user_summaries() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_admin_user_summaries(integer, integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_platform_usage_metrics() TO authenticated;

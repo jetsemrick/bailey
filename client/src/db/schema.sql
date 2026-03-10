@@ -7,10 +7,14 @@ DROP TABLE IF EXISTS cells CASCADE;
 DROP TABLE IF EXISTS sheets CASCADE;
 DROP TABLE IF EXISTS flows CASCADE;
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS prevent_role_self_escalation ON profiles;
 DROP FUNCTION IF EXISTS get_platform_usage_metrics();
+DROP FUNCTION IF EXISTS get_admin_user_summaries(integer, integer);
 DROP FUNCTION IF EXISTS get_admin_user_summaries();
 DROP FUNCTION IF EXISTS is_admin();
+DROP FUNCTION IF EXISTS is_admin_email(text);
 DROP FUNCTION IF EXISTS handle_new_user();
+DROP FUNCTION IF EXISTS prevent_role_self_escalation();
 
 -- Drop new tables if re-running
 DROP TABLE IF EXISTS round_analytics CASCADE;
@@ -20,6 +24,7 @@ DROP TABLE IF EXISTS flow_tabs CASCADE;
 DROP TABLE IF EXISTS rounds CASCADE;
 DROP TABLE IF EXISTS tournaments CASCADE;
 DROP TABLE IF EXISTS profiles CASCADE;
+DROP TABLE IF EXISTS admin_emails CASCADE;
 DROP TYPE IF EXISTS user_role CASCADE;
 
 -- ============================================================
@@ -27,6 +32,11 @@ DROP TYPE IF EXISTS user_role CASCADE;
 -- ============================================================
 
 CREATE TYPE user_role AS ENUM ('Admin', 'User');
+
+CREATE TABLE admin_emails (
+  email text PRIMARY KEY,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -130,6 +140,7 @@ CREATE INDEX idx_round_analytics_user ON round_analytics(user_id);
 -- Row Level Security
 -- ============================================================
 
+ALTER TABLE admin_emails ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tournaments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rounds ENABLE ROW LEVEL SECURITY;
@@ -166,58 +177,6 @@ CREATE POLICY "Users manage own round analytics" ON round_analytics
 -- Admin helpers and auth profile sync
 -- ============================================================
 
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  INSERT INTO profiles (id, email, role)
-  VALUES (
-    NEW.id,
-    NEW.email,
-    CASE
-      WHEN lower(NEW.email) = 'jet.semrick@gmail.com' THEN 'Admin'::user_role
-      ELSE 'User'::user_role
-    END
-  )
-  ON CONFLICT (id) DO UPDATE
-  SET
-    email = EXCLUDED.email,
-    role = CASE
-      WHEN lower(EXCLUDED.email) = 'jet.semrick@gmail.com' THEN 'Admin'::user_role
-      ELSE profiles.role
-    END,
-    updated_at = now();
-
-  RETURN NEW;
-END;
-$$;
-
-INSERT INTO profiles (id, email, role)
-SELECT
-  users.id,
-  users.email,
-  CASE
-    WHEN lower(users.email) = 'jet.semrick@gmail.com' THEN 'Admin'::user_role
-    ELSE 'User'::user_role
-  END
-FROM auth.users AS users
-WHERE users.email IS NOT NULL
-ON CONFLICT (id) DO UPDATE
-SET
-  email = EXCLUDED.email,
-  role = CASE
-    WHEN lower(EXCLUDED.email) = 'jet.semrick@gmail.com' THEN 'Admin'::user_role
-    ELSE profiles.role
-  END,
-  updated_at = now();
-
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
-
 CREATE OR REPLACE FUNCTION is_admin()
 RETURNS boolean
 LANGUAGE plpgsql
@@ -234,10 +193,105 @@ BEGIN
 END;
 $$;
 
+CREATE POLICY "Only admins can view admin_emails" ON admin_emails
+  FOR SELECT USING (is_admin());
+
+CREATE POLICY "Only admins can manage admin_emails" ON admin_emails
+  FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+
+CREATE OR REPLACE FUNCTION is_admin_email(check_email text)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM admin_emails WHERE lower(email) = lower(check_email)
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO profiles (id, email, role)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    CASE
+      WHEN is_admin_email(NEW.email) THEN 'Admin'::user_role
+      ELSE 'User'::user_role
+    END
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET
+    email = EXCLUDED.email,
+    role = CASE
+      WHEN is_admin_email(EXCLUDED.email) THEN 'Admin'::user_role
+      ELSE profiles.role
+    END,
+    updated_at = now();
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION prevent_role_self_escalation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF OLD.role IS DISTINCT FROM NEW.role THEN
+    IF NOT is_admin() OR auth.uid() = NEW.id THEN
+      NEW.role := OLD.role;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER prevent_role_self_escalation
+  BEFORE UPDATE ON profiles
+  FOR EACH ROW EXECUTE FUNCTION prevent_role_self_escalation();
+
+INSERT INTO profiles (id, email, role)
+SELECT
+  users.id,
+  users.email,
+  CASE
+    WHEN is_admin_email(users.email) THEN 'Admin'::user_role
+    ELSE 'User'::user_role
+  END
+FROM auth.users AS users
+WHERE users.email IS NOT NULL
+ON CONFLICT (id) DO UPDATE
+SET
+  email = EXCLUDED.email,
+  role = CASE
+    WHEN is_admin_email(EXCLUDED.email) THEN 'Admin'::user_role
+    ELSE profiles.role
+  END,
+  updated_at = now();
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
 CREATE POLICY "Admins can view all profiles" ON profiles
   FOR SELECT USING (is_admin());
 
-CREATE OR REPLACE FUNCTION get_admin_user_summaries()
+CREATE OR REPLACE FUNCTION get_admin_user_summaries(
+  page_limit integer DEFAULT 100,
+  page_offset integer DEFAULT 0
+)
 RETURNS TABLE (
   id uuid,
   email text,
@@ -316,7 +370,9 @@ BEGIN
   ) AS ra ON true
   ORDER BY
     CASE WHEN p.role = 'Admin' THEN 0 ELSE 1 END,
-    p.created_at DESC;
+    p.created_at DESC
+  LIMIT page_limit
+  OFFSET page_offset;
 END;
 $$;
 
@@ -375,7 +431,7 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION get_admin_user_summaries() TO authenticated;
+GRANT EXECUTE ON FUNCTION get_admin_user_summaries(integer, integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_platform_usage_metrics() TO authenticated;
 
 -- ============================================================
