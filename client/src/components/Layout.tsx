@@ -17,14 +17,31 @@ interface LayoutProps {
 }
 
 export default function Layout({ children, breadcrumbs, headerActions }: LayoutProps) {
-  const { user, signOut } = useAuth();
+  const { user, signOut, requestPasswordReset } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [resetNotice, setResetNotice] = useState<string | null>(null);
   const location = useLocation();
 
   // Close menu on route change
   useEffect(() => {
     setShowUserMenu(false);
+    setResetNotice(null);
   }, [location.pathname]);
+
+  const handlePasswordResetRequest = async () => {
+    setResetNotice(null);
+    setResetSubmitting(true);
+    const { error } = await requestPasswordReset();
+    setResetSubmitting(false);
+
+    if (error) {
+      setResetNotice(error);
+      return;
+    }
+
+    setResetNotice('Password reset email sent. Check your inbox.');
+  };
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground">
@@ -97,11 +114,23 @@ export default function Layout({ children, breadcrumbs, headerActions }: LayoutP
                       )}
                     </div>
                     <button
+                      onClick={handlePasswordResetRequest}
+                      disabled={resetSubmitting}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-card-02 transition-colors disabled:opacity-50"
+                    >
+                      {resetSubmitting ? 'Sending reset email...' : 'Change password'}
+                    </button>
+                    <button
                       onClick={signOut}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-card-02 transition-colors"
                     >
                       Sign out
                     </button>
+                    {resetNotice && (
+                      <div className="px-3 py-2 text-xs text-foreground/60 border-t border-card-04">
+                        {resetNotice}
+                      </div>
+                    )}
                   </div>
                 </>
               )}

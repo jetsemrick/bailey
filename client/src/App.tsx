@@ -3,6 +3,7 @@ import { AuthProvider } from './auth/AuthContext';
 import AuthGuard from './auth/AuthGuard';
 import LoginPage from './auth/LoginPage';
 import SignupPage from './auth/SignupPage';
+import AuthPage from './auth/AuthPage';
 import HomePage from './pages/HomePage';
 import TournamentPage from './pages/TournamentPage';
 import RoundPage from './pages/RoundPage';
@@ -12,6 +13,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          <Route path="/auth" element={<AuthPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route
