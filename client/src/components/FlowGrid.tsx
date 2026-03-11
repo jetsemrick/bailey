@@ -21,6 +21,13 @@ import { Trash2, X } from 'lucide-react';
 import { SPEECH_COLUMNS, type CellColor } from '../db/types';
 import type { useFlowGrid } from '../hooks/useFlowGrid';
 import { useUndoRedo } from '../hooks/useUndoRedo';
+import {
+  KEYBOARD_MACROS_STORAGE_KEY,
+  KEYBOARD_MACROS_UPDATED_EVENT,
+  loadKeyboardMacros,
+  shortcutFromKeyboardEvent,
+  type MacroAction,
+} from '../keyboardMacros';
 
 type FlowGridApi = ReturnType<typeof useFlowGrid>;
 
@@ -315,6 +322,8 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(0);
   const hasScrolledToEndRef = useRef(false);
+  const [macros, setMacros] = useState(() => loadKeyboardMacros());
+  const selectedCellRef = useRef<{ col: number; row: number } | null>(null);
 
   // Track container height to fill viewport with rows
   useEffect(() => {
@@ -368,6 +377,26 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
     const minRows = Math.max(minRowsFromHeight, 35);
     return Math.max(contentMax, minRows);
   }, [getColumnRowCount, activeFlowId, grid.cells, minRowsFromHeight]);
+
+  useEffect(() => {
+    selectedCellRef.current = selectedCell;
+  }, [selectedCell]);
+
+  useEffect(() => {
+    const reloadMacros = () => setMacros(loadKeyboardMacros());
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === KEYBOARD_MACROS_STORAGE_KEY) {
+        reloadMacros();
+      }
+    };
+
+    window.addEventListener(KEYBOARD_MACROS_UPDATED_EVENT, reloadMacros);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener(KEYBOARD_MACROS_UPDATED_EVENT, reloadMacros);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
   // Keep selected cell fully visible and never under sticky column header
   useEffect(() => {
@@ -460,6 +489,142 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
     [maxRows, dataCols]
   );
 
+  const runMacro = useCallback(
+    (actions: MacroAction[]) => {
+      let cursor = selectedCellRef.current;
+      const setCursor = (next: { col: number; row: number } | null) => {
+        cursor = next;
+        selectedCellRef.current = next;
+        setSelectedCell(next);
+      };
+
+      const getMeaningfulRows = (col: number, startRow: number): number[] => {
+        const rows: number[] = [];
+        for (const [key, cell] of grid.cells) {
+          const [currentCol, currentRow] = key.split(':').map(Number);
+          if (currentCol !== col || currentRow < startRow) continue;
+          const hasData = cell.content.trim() !== '' || cell.color !== null || cell.comment.trim() !== '';
+          if (hasData) rows.push(currentRow);
+        }
+        rows.sort((a, b) => b - a);
+        return rows;
+      };
+
+      const insertCells = (count: number) => {
+        if (!cursor) return;
+        const updates: { col: number; row: number; content: string; color: CellColor; comment: string }[] = [];
+        const rowsToShift = getMeaningfulRows(cursor.col, cursor.row);
+
+        for (const row of rowsToShift) {
+          updates.push({
+            col: cursor.col,
+            row: row + count,
+            content: getCellContent(cursor.col, row),
+            color: getCellColor(cursor.col, row),
+            comment: getCellComment(cursor.col, row),
+          });
+        }
+
+        for (let row = cursor.row; row < cursor.row + count; row++) {
+          updates.push({ col: cursor.col, row, content: '', color: null, comment: '' });
+        }
+
+        bulkUpdateCells(updates);
+      };
+
+      const insertRows = (count: number) => {
+        if (!cursor) return;
+        const updates: { col: number; row: number; content: string; color: CellColor; comment: string }[] = [];
+
+        for (const col of dataCols) {
+          const rowsToShift = getMeaningfulRows(col, cursor.row);
+          for (const row of rowsToShift) {
+            updates.push({
+              col,
+              row: row + count,
+              content: getCellContent(col, row),
+              color: getCellColor(col, row),
+              comment: getCellComment(col, row),
+            });
+          }
+          for (let row = cursor.row; row < cursor.row + count; row++) {
+            updates.push({ col, row, content: '', color: null, comment: '' });
+          }
+        }
+
+        bulkUpdateCells(updates);
+      };
+
+      const highlightCell = () => {
+        if (!cursor) return;
+        const cycle: CellColor[] = [null, 'yellow', 'green', 'blue'];
+        const current = getCellColor(cursor.col, cursor.row);
+        const index = cycle.indexOf(current);
+        const next = cycle[(index + 1) % cycle.length];
+        updateCellColor(cursor.col, cursor.row, next);
+      };
+
+      const moveDownRows = (count: number) => {
+        if (!cursor) return;
+        setCursor({ col: cursor.col, row: Math.min(maxRows - 1, cursor.row + count) });
+      };
+
+      const nextFlowSheet = () => {
+        if (grid.flows.length === 0) return;
+        if (!activeFlowId) {
+          grid.selectFlow(grid.flows[0].id);
+          return;
+        }
+        const index = grid.flows.findIndex((flow) => flow.id === activeFlowId);
+        const nextFlow = grid.flows[(index + 1) % grid.flows.length];
+        if (nextFlow) grid.selectFlow(nextFlow.id);
+      };
+
+      for (const action of actions) {
+        switch (action) {
+          case 'next_flow_sheet':
+            nextFlowSheet();
+            break;
+          case 'insert_5_cells':
+            insertCells(5);
+            break;
+          case 'insert_5_rows':
+            insertRows(5);
+            break;
+          case 'highlight_cell':
+            highlightCell();
+            break;
+          case 'move_down_4_rows':
+            moveDownRows(4);
+            break;
+          default:
+            break;
+        }
+      }
+    },
+    [
+      grid.cells,
+      grid.flows,
+      grid.selectFlow,
+      activeFlowId,
+      getCellContent,
+      getCellColor,
+      getCellComment,
+      bulkUpdateCells,
+      updateCellColor,
+      dataCols,
+      maxRows,
+    ]
+  );
+
+  const macroActionsByShortcut = useMemo(() => {
+    const map = new Map<string, MacroAction[]>();
+    for (const macro of macros) {
+      map.set(macro.shortcut, macro.actions);
+    }
+    return map;
+  }, [macros]);
+
   // Keyboard undo/redo + save + arrow key navigation when selected (not editing)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -477,6 +642,18 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
       if (mod && e.key === 's') {
         e.preventDefault();
         grid.saveNow();
+      }
+      const shortcut = shortcutFromKeyboardEvent(e);
+      if (shortcut) {
+        const actions = macroActionsByShortcut.get(shortcut);
+        const target = e.target as HTMLElement;
+        const isTypingTarget =
+          target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+        if (actions && actions.length > 0 && !isTypingTarget && !isEditing) {
+          e.preventDefault();
+          runMacro(actions);
+          return;
+        }
       }
       // Arrow key navigation when cell is selected but not editing
       // Skip if user is focused on an input/textarea element elsewhere on the page
@@ -510,7 +687,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [undoRedo, updateCell, grid, selectedCell, isEditing, navigate]);
+  }, [undoRedo, updateCell, grid, selectedCell, isEditing, navigate, macroActionsByShortcut, runMacro]);
 
   // DnD handlers
   const handleDragStart = useCallback((e: DragStartEvent) => {
