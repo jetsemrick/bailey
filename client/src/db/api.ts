@@ -24,6 +24,19 @@ function toCount(value: number | string | null | undefined): number {
   return typeof value === 'number' ? value : Number(value ?? 0);
 }
 
+function toError(error: unknown, fallbackMessage: string): Error {
+  if (error instanceof Error) return error;
+  if (
+    error &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof (error as { message: unknown }).message === 'string'
+  ) {
+    return new Error((error as { message: string }).message);
+  }
+  return new Error(fallbackMessage);
+}
+
 export async function getCurrentProfile(): Promise<Profile | null> {
   const userId = await uid();
   const { data, error } = await supabase
@@ -39,11 +52,20 @@ export async function listAdminUserSummaries(
   pageLimit = 100,
   pageOffset = 0
 ): Promise<AdminUserSummary[]> {
-  const { data, error } = await supabase.rpc('get_admin_user_summaries', {
+  let { data, error } = await supabase.rpc('get_admin_user_summaries', {
     page_limit: pageLimit,
     page_offset: pageOffset,
   });
-  if (error) throw error;
+
+  // Backward compatibility: some databases still expose the legacy
+  // no-argument function signature for this RPC.
+  if (error && (error as { code?: string }).code === 'PGRST202') {
+    const fallbackResult = await supabase.rpc('get_admin_user_summaries');
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+  }
+
+  if (error) throw toError(error, 'Failed to load admin user summaries');
   const rows = (data ?? []) as Array<Partial<AdminUserSummary>>;
   return rows.map((row) => ({
     ...row,
@@ -59,7 +81,7 @@ export async function getPlatformUsageMetrics(): Promise<PlatformUsageMetrics> {
   const { data, error } = await supabase
     .rpc('get_platform_usage_metrics')
     .single();
-  if (error) throw error;
+  if (error) throw toError(error, 'Failed to load platform usage metrics');
   const row = data as Record<string, number | string | null>;
   return {
     total_users: toCount(row.total_users),
@@ -78,9 +100,11 @@ export async function getPlatformUsageMetrics(): Promise<PlatformUsageMetrics> {
 // ── Tournaments ──────────────────────────────────────────────
 
 export async function listTournaments(): Promise<Tournament[]> {
+  const userId = await uid();
   const { data, error } = await supabase
     .from('tournaments')
     .select('*')
+    .eq('user_id', userId)
     .order('updated_at', { ascending: false });
   if (error) throw error;
   return data ?? [];

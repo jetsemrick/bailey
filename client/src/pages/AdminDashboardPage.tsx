@@ -54,23 +54,16 @@ export default function AdminDashboardPage() {
         ? [
             { label: 'Users', value: formatCount(metrics.total_users) },
             { label: 'Admins', value: formatCount(metrics.admin_users) },
-            { label: 'Active Users', value: formatCount(metrics.active_users) },
-            { label: 'Tournaments', value: formatCount(metrics.total_tournaments) },
-            { label: 'Rounds', value: formatCount(metrics.total_rounds) },
-            { label: 'Flow Tabs', value: formatCount(metrics.total_flow_tabs) },
-            { label: 'Flow Cells', value: formatCount(metrics.total_flow_cells) },
-            { label: 'Analytics Entries', value: formatCount(metrics.total_analytics_entries) },
           ]
         : [],
     [metrics]
   );
 
   return (
-    <Layout breadcrumbs={[{ label: 'Admin Dashboard' }]}>
+    <Layout breadcrumbs={[{ label: 'Administrator View' }]}>
       <div className="flex-1 overflow-auto p-6 max-w-7xl mx-auto w-full space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Admin Dashboard</h2>
             <p className="text-sm text-foreground/60 mt-1">
               Monitor users and platform activity.
             </p>
@@ -139,9 +132,6 @@ export default function AdminDashboardPage() {
                         <th className="px-4 py-3">Role</th>
                         <th className="px-4 py-3">Tournaments</th>
                         <th className="px-4 py-3">Rounds</th>
-                        <th className="px-4 py-3">Flows</th>
-                        <th className="px-4 py-3">Cells</th>
-                        <th className="px-4 py-3">Analytics</th>
                         <th className="px-4 py-3">Last Activity</th>
                         <th className="px-4 py-3">Joined</th>
                       </tr>
@@ -169,15 +159,6 @@ export default function AdminDashboardPage() {
                           </td>
                           <td className="px-4 py-3 text-foreground/80">
                             {formatCount(summary.round_count)}
-                          </td>
-                          <td className="px-4 py-3 text-foreground/80">
-                            {formatCount(summary.flow_count)}
-                          </td>
-                          <td className="px-4 py-3 text-foreground/80">
-                            {formatCount(summary.cell_count)}
-                          </td>
-                          <td className="px-4 py-3 text-foreground/80">
-                            {formatCount(summary.analytics_count)}
                           </td>
                           <td className="px-4 py-3 text-foreground/60">
                             {formatDateTime(summary.last_activity_at)}
