@@ -17,7 +17,7 @@ interface LayoutProps {
 }
 
 export default function Layout({ children, breadcrumbs, headerActions }: LayoutProps) {
-  const { user, signOut, requestPasswordReset } = useAuth();
+  const { user, role, isAdmin, signOut, requestPasswordReset } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [resetSubmitting, setResetSubmitting] = useState(false);
   const [resetNotice, setResetNotice] = useState<string | null>(null);
@@ -72,6 +72,18 @@ export default function Layout({ children, breadcrumbs, headerActions }: LayoutP
         </div>
         <div className="flex items-center gap-2">
           {headerActions}
+          {isAdmin && (
+            <Link
+              to="/admin"
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                location.pathname === '/admin'
+                  ? 'bg-accent/10 text-accent'
+                  : 'text-foreground/60 hover:bg-card-02 hover:text-foreground'
+              }`}
+            >
+              Admin
+            </Link>
+          )}
           {location.pathname.startsWith('/round/') && <Timer />}
           <Settings />
           {user && (
@@ -112,7 +124,18 @@ export default function Layout({ children, breadcrumbs, headerActions }: LayoutP
                       {user.email && (
                         <div className="truncate text-foreground/40">{user.email}</div>
                       )}
+                      {role && (
+                        <div className="truncate text-foreground/40">Role: {role}</div>
+                      )}
                     </div>
+                    {isAdmin && (
+                      <Link
+                        to="/admin"
+                        className="block px-3 py-2 text-sm hover:bg-card-02 transition-colors"
+                      >
+                        Admin Dashboard
+                      </Link>
+                    )}
                     <button
                       onClick={handlePasswordResetRequest}
                       disabled={resetSubmitting}

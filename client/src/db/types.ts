@@ -1,4 +1,38 @@
 export type TournamentType = 'judge' | 'competitor';
+export type UserRole = 'Admin' | 'User';
+
+export interface Profile {
+  id: string;
+  email: string;
+  role: UserRole;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlatformUsageMetrics {
+  total_users: number;
+  admin_users: number;
+  active_users: number;
+  total_tournaments: number;
+  total_rounds: number;
+  total_flow_tabs: number;
+  total_flow_cells: number;
+  total_analytics_entries: number;
+  most_recent_activity_at: string | null;
+}
+
+export interface AdminUserSummary {
+  id: string;
+  email: string;
+  role: UserRole;
+  tournament_count: number;
+  round_count: number;
+  flow_count: number;
+  cell_count: number;
+  analytics_count: number;
+  last_activity_at: string | null;
+  created_at: string;
+}
 
 export interface Tournament {
   id: string;

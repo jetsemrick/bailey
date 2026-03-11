@@ -6,6 +6,15 @@
 DROP TABLE IF EXISTS cells CASCADE;
 DROP TABLE IF EXISTS sheets CASCADE;
 DROP TABLE IF EXISTS flows CASCADE;
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS prevent_role_self_escalation ON profiles;
+DROP FUNCTION IF EXISTS get_platform_usage_metrics();
+DROP FUNCTION IF EXISTS get_admin_user_summaries(integer, integer);
+DROP FUNCTION IF EXISTS get_admin_user_summaries();
+DROP FUNCTION IF EXISTS is_admin();
+DROP FUNCTION IF EXISTS is_admin_email(text);
+DROP FUNCTION IF EXISTS handle_new_user();
+DROP FUNCTION IF EXISTS prevent_role_self_escalation();
 
 -- Drop new tables if re-running
 DROP TABLE IF EXISTS round_analytics CASCADE;
@@ -14,10 +23,28 @@ DROP TABLE IF EXISTS flow_cells CASCADE;
 DROP TABLE IF EXISTS flow_tabs CASCADE;
 DROP TABLE IF EXISTS rounds CASCADE;
 DROP TABLE IF EXISTS tournaments CASCADE;
+DROP TABLE IF EXISTS profiles CASCADE;
+DROP TABLE IF EXISTS admin_emails CASCADE;
+DROP TYPE IF EXISTS user_role CASCADE;
 
 -- ============================================================
 -- Tables
 -- ============================================================
+
+CREATE TYPE user_role AS ENUM ('Admin', 'User');
+
+CREATE TABLE admin_emails (
+  email text PRIMARY KEY,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE profiles (
+  id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email text NOT NULL UNIQUE,
+  role user_role NOT NULL DEFAULT 'User',
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
 
 CREATE TABLE tournaments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -96,6 +123,7 @@ CREATE TABLE round_analytics (
 -- Indexes
 -- ============================================================
 
+CREATE INDEX idx_profiles_role ON profiles(role);
 CREATE INDEX idx_tournaments_user ON tournaments(user_id);
 CREATE INDEX idx_rounds_tournament ON rounds(tournament_id);
 CREATE INDEX idx_rounds_user ON rounds(user_id);
@@ -112,12 +140,20 @@ CREATE INDEX idx_round_analytics_user ON round_analytics(user_id);
 -- Row Level Security
 -- ============================================================
 
+ALTER TABLE admin_emails ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tournaments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rounds ENABLE ROW LEVEL SECURITY;
 ALTER TABLE flow_tabs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE flow_cells ENABLE ROW LEVEL SECURITY;
 ALTER TABLE flow_analytics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE round_analytics ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own profile" ON profiles
+  FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can update own profile" ON profiles
+  FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
 
 CREATE POLICY "Users manage own tournaments" ON tournaments
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
@@ -138,6 +174,267 @@ CREATE POLICY "Users manage own round analytics" ON round_analytics
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- ============================================================
+-- Admin helpers and auth profile sync
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1
+    FROM profiles
+    WHERE id = auth.uid() AND role = 'Admin'
+  );
+END;
+$$;
+
+CREATE POLICY "Only admins can view admin_emails" ON admin_emails
+  FOR SELECT USING (is_admin());
+
+CREATE POLICY "Only admins can manage admin_emails" ON admin_emails
+  FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+
+CREATE OR REPLACE FUNCTION is_admin_email(check_email text)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM admin_emails WHERE lower(email) = lower(check_email)
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO profiles (id, email, role)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    CASE
+      WHEN is_admin_email(NEW.email) THEN 'Admin'::user_role
+      ELSE 'User'::user_role
+    END
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET
+    email = EXCLUDED.email,
+    role = CASE
+      WHEN is_admin_email(EXCLUDED.email) THEN 'Admin'::user_role
+      ELSE profiles.role
+    END,
+    updated_at = now();
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION prevent_role_self_escalation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF OLD.role IS DISTINCT FROM NEW.role THEN
+    IF NOT is_admin() OR auth.uid() = NEW.id THEN
+      NEW.role := OLD.role;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER prevent_role_self_escalation
+  BEFORE UPDATE ON profiles
+  FOR EACH ROW EXECUTE FUNCTION prevent_role_self_escalation();
+
+INSERT INTO profiles (id, email, role)
+SELECT
+  users.id,
+  users.email,
+  CASE
+    WHEN is_admin_email(users.email) THEN 'Admin'::user_role
+    ELSE 'User'::user_role
+  END
+FROM auth.users AS users
+WHERE users.email IS NOT NULL
+ON CONFLICT (id) DO UPDATE
+SET
+  email = EXCLUDED.email,
+  role = CASE
+    WHEN is_admin_email(EXCLUDED.email) THEN 'Admin'::user_role
+    ELSE profiles.role
+  END,
+  updated_at = now();
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+CREATE POLICY "Admins can view all profiles" ON profiles
+  FOR SELECT USING (is_admin());
+
+CREATE OR REPLACE FUNCTION get_admin_user_summaries(
+  page_limit integer DEFAULT 100,
+  page_offset integer DEFAULT 0
+)
+RETURNS TABLE (
+  id uuid,
+  email text,
+  role user_role,
+  tournament_count bigint,
+  round_count bigint,
+  flow_count bigint,
+  cell_count bigint,
+  analytics_count bigint,
+  last_activity_at timestamptz,
+  created_at timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT is_admin() THEN
+    RAISE EXCEPTION 'Admin access required';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    p.id,
+    p.email,
+    p.role,
+    COALESCE(t.tournament_count, 0),
+    COALESCE(r.round_count, 0),
+    COALESCE(f.flow_count, 0),
+    COALESCE(c.cell_count, 0),
+    COALESCE(fa.analytics_count, 0) + COALESCE(ra.analytics_count, 0),
+    (
+      SELECT MAX(activity_at)
+      FROM (
+        VALUES
+          (p.updated_at),
+          (t.last_activity_at),
+          (r.last_activity_at),
+          (f.last_activity_at),
+          (c.last_activity_at),
+          (fa.last_activity_at),
+          (ra.last_activity_at)
+      ) AS activity(activity_at)
+    ) AS last_activity_at,
+    p.created_at
+  FROM profiles AS p
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::bigint AS tournament_count, MAX(updated_at) AS last_activity_at
+    FROM tournaments
+    WHERE user_id = p.id
+  ) AS t ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::bigint AS round_count, MAX(updated_at) AS last_activity_at
+    FROM rounds
+    WHERE user_id = p.id
+  ) AS r ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::bigint AS flow_count, MAX(updated_at) AS last_activity_at
+    FROM flow_tabs
+    WHERE user_id = p.id
+  ) AS f ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::bigint AS cell_count, MAX(updated_at) AS last_activity_at
+    FROM flow_cells
+    WHERE user_id = p.id
+  ) AS c ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::bigint AS analytics_count, MAX(updated_at) AS last_activity_at
+    FROM flow_analytics
+    WHERE user_id = p.id
+  ) AS fa ON true
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*)::bigint AS analytics_count, MAX(updated_at) AS last_activity_at
+    FROM round_analytics
+    WHERE user_id = p.id
+  ) AS ra ON true
+  ORDER BY
+    CASE WHEN p.role = 'Admin' THEN 0 ELSE 1 END,
+    p.created_at DESC
+  LIMIT page_limit
+  OFFSET page_offset;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_platform_usage_metrics()
+RETURNS TABLE (
+  total_users bigint,
+  admin_users bigint,
+  active_users bigint,
+  total_tournaments bigint,
+  total_rounds bigint,
+  total_flow_tabs bigint,
+  total_flow_cells bigint,
+  total_analytics_entries bigint,
+  most_recent_activity_at timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT is_admin() THEN
+    RAISE EXCEPTION 'Admin access required';
+  END IF;
+
+  RETURN QUERY
+  WITH activity AS (
+    SELECT user_id, MAX(updated_at) AS last_activity_at
+    FROM (
+      SELECT user_id, updated_at FROM tournaments
+      UNION ALL
+      SELECT user_id, updated_at FROM rounds
+      UNION ALL
+      SELECT user_id, updated_at FROM flow_tabs
+      UNION ALL
+      SELECT user_id, updated_at FROM flow_cells
+      UNION ALL
+      SELECT user_id, updated_at FROM flow_analytics
+      UNION ALL
+      SELECT user_id, updated_at FROM round_analytics
+    ) AS all_activity
+    GROUP BY user_id
+  )
+  SELECT
+    (SELECT COUNT(*)::bigint FROM profiles),
+    (SELECT COUNT(*)::bigint FROM profiles WHERE role = 'Admin'),
+    (SELECT COUNT(*)::bigint FROM activity),
+    (SELECT COUNT(*)::bigint FROM tournaments),
+    (SELECT COUNT(*)::bigint FROM rounds),
+    (SELECT COUNT(*)::bigint FROM flow_tabs),
+    (SELECT COUNT(*)::bigint FROM flow_cells),
+    (
+      (SELECT COUNT(*)::bigint FROM flow_analytics) +
+      (SELECT COUNT(*)::bigint FROM round_analytics)
+    ),
+    (SELECT MAX(last_activity_at) FROM activity);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_admin_user_summaries(integer, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_platform_usage_metrics() TO authenticated;
+
+-- ============================================================
 -- Auto-update updated_at trigger
 -- ============================================================
 
@@ -151,6 +448,9 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER tournaments_updated_at
   BEFORE UPDATE ON tournaments FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER profiles_updated_at
+  BEFORE UPDATE ON profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 CREATE TRIGGER rounds_updated_at
   BEFORE UPDATE ON rounds FOR EACH ROW EXECUTE FUNCTION update_updated_at();
