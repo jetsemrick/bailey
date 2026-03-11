@@ -100,6 +100,9 @@ $$;
 -- Update get_admin_user_summaries with LIMIT/OFFSET
 -- ============================================================
 
+-- Drop old function without parameters (different signature)
+DROP FUNCTION IF EXISTS public.get_admin_user_summaries();
+
 CREATE OR REPLACE FUNCTION public.get_admin_user_summaries(
   page_limit integer DEFAULT 100,
   page_offset integer DEFAULT 0
@@ -187,3 +190,6 @@ BEGIN
   OFFSET page_offset;
 END;
 $$;
+
+-- Grant execute permission to authenticated users
+GRANT EXECUTE ON FUNCTION public.get_admin_user_summaries(integer, integer) TO authenticated;
