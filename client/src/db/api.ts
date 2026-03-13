@@ -11,6 +11,8 @@ import type {
   AdminUserSummary,
   PlatformUsageMetrics,
 } from './types';
+import type { KeyboardMacro } from '../keyboardMacros';
+import { DEFAULT_KEYBOARD_MACROS } from '../keyboardMacros';
 
 // ── helpers ──────────────────────────────────────────────────
 
@@ -362,6 +364,38 @@ export async function upsertRoundAnalytics(
     .single();
   if (error) throw error;
   return data;
+}
+
+// ── Keyboard Macros ───────────────────────────────────────────
+
+export async function fetchKeyboardMacros(): Promise<KeyboardMacro[]> {
+  const userId = await uid();
+  const { data, error } = await supabase
+    .from('keyboard_macros')
+    .select('macros')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.macros || !Array.isArray(data.macros)) return [...DEFAULT_KEYBOARD_MACROS];
+  const coerced = (data.macros as unknown[]).filter(
+    (m): m is KeyboardMacro =>
+      m != null &&
+      typeof m === 'object' &&
+      typeof (m as KeyboardMacro).id === 'string' &&
+      typeof (m as KeyboardMacro).name === 'string' &&
+      typeof (m as KeyboardMacro).shortcut === 'string' &&
+      Array.isArray((m as KeyboardMacro).actions)
+  );
+  return coerced.length > 0 ? coerced : [...DEFAULT_KEYBOARD_MACROS];
+}
+
+export async function saveKeyboardMacrosRemote(macros: KeyboardMacro[]): Promise<void> {
+  const userId = await uid();
+  const { error } = await supabase.from('keyboard_macros').upsert(
+    { user_id: userId, macros },
+    { onConflict: 'user_id' }
+  );
+  if (error) throw error;
 }
 
 // ── Export / Import helpers ──────────────────────────────────

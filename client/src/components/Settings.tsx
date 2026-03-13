@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { MACRO_ACTION_OPTIONS, type KeyboardMacro, shortcutFromKeyboardEvent } from '../keyboardMacros';
+import { useKeyboardMacrosContext } from '../contexts/KeyboardMacrosContext';
 
 const FONT_SIZE_KEY = 'bailey-font-size';
 const DEFAULT_FONT_SIZE = 14;
@@ -6,8 +8,12 @@ const MIN_FONT_SIZE = 8;
 const MAX_FONT_SIZE = 24;
 
 export default function Settings() {
+  const { macros: serverMacros, loading: macrosLoading, save, reset } = useKeyboardMacrosContext();
   const [isOpen, setIsOpen] = useState(false);
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
+  const [macros, setMacros] = useState<KeyboardMacro[]>([]);
+  const [savedMacros, setSavedMacros] = useState<KeyboardMacro[]>([]);
+  const [macroErrors, setMacroErrors] = useState<string[]>([]);
 
   useEffect(() => {
     const saved = localStorage.getItem(FONT_SIZE_KEY);
@@ -27,6 +33,58 @@ export default function Settings() {
     setFontSize(clamped);
     localStorage.setItem(FONT_SIZE_KEY, clamped.toString());
     document.documentElement.style.setProperty('--cell-font-size', `${clamped}px`);
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setMacros(serverMacros);
+    setSavedMacros(serverMacros);
+    setMacroErrors([]);
+  }, [isOpen, serverMacros]);
+
+  const macrosDirty = useMemo(
+    () => JSON.stringify(macros) !== JSON.stringify(savedMacros),
+    [macros, savedMacros]
+  );
+
+  const updateMacro = (id: string, updater: (macro: KeyboardMacro) => KeyboardMacro) => {
+    setMacros((prev) => prev.map((macro) => (macro.id === id ? updater(macro) : macro)));
+    setMacroErrors([]);
+  };
+
+  const handleShortcutCapture = (id: string, event: React.KeyboardEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const isDelete = event.key === 'Backspace' || event.key === 'Delete';
+    const hasModifier = event.ctrlKey || event.metaKey || event.altKey || event.shiftKey;
+    if (isDelete && !hasModifier) {
+      updateMacro(id, (macro) => ({ ...macro, shortcut: '' }));
+      return;
+    }
+
+    const shortcut = shortcutFromKeyboardEvent({
+      key: event.key,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      altKey: event.altKey,
+      shiftKey: event.shiftKey,
+    });
+    if (!shortcut) return;
+    updateMacro(id, (macro) => ({ ...macro, shortcut }));
+  };
+
+  const handleSaveMacros = async () => {
+    const errors = await save(macros);
+    setMacroErrors(errors);
+    if (errors.length === 0) {
+      setSavedMacros(macros);
+    }
+  };
+
+  const handleResetMacros = async () => {
+    const errors = await reset();
+    setMacroErrors(errors);
   };
 
   return (
@@ -56,7 +114,7 @@ export default function Settings() {
       {isOpen && (
         <>
           <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setIsOpen(false)} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card border border-card-04 rounded-lg shadow-lg z-50 p-6 min-w-[300px]">
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card border border-card-04 rounded-lg shadow-lg z-50 p-6 w-[min(900px,calc(100vw-2rem))] max-h-[85vh] overflow-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold">Settings</h2>
               <button
@@ -78,13 +136,72 @@ export default function Settings() {
                   max={MAX_FONT_SIZE}
                   value={fontSize}
                   onChange={(e) => handleFontSizeChange(parseInt(e.target.value, 10))}
-                  className="flex-1"
+                  className="w-1/2 min-w-[180px]"
                 />
                 <button
                   onClick={() => handleFontSizeChange(DEFAULT_FONT_SIZE)}
                   className="px-2 py-1 text-xs bg-card-02 rounded hover:bg-card-03 transition-colors"
                 >
                   Reset
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-card-04 space-y-3">
+              {macrosLoading && (
+                <div className="text-sm text-foreground/60">Loading macros...</div>
+              )}
+              <div>
+                <h3 className="text-sm font-semibold">Keyboard Shortcuts</h3>
+                <p className="text-xs text-foreground/60 mt-1">
+                  Change keybinds for built-in actions. Click a shortcut field and press the key combo. Backspace clears it.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                {macros.map((macro) => (
+                  <div key={macro.id} className="border border-card-04 rounded-lg p-3 bg-card-01 flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{macro.name}</div>
+                      <div className="text-xs text-foreground/60 mt-0.5">
+                        {macro.actions
+                          .map((a) => MACRO_ACTION_OPTIONS.find((o) => o.value === a)?.label ?? a)
+                          .join(' → ')}
+                      </div>
+                    </div>
+                    <input
+                      value={macro.shortcut}
+                      onKeyDown={(event) => handleShortcutCapture(macro.id, event)}
+                      readOnly
+                      className="shrink-0 w-[180px] px-2 py-1.5 text-sm font-mono bg-background border border-card-04 rounded focus:outline-none focus:border-accent"
+                      placeholder="Press shortcut"
+                      title="Click and press a shortcut"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {macroErrors.length > 0 && (
+                <div className="text-xs text-red-500 space-y-1">
+                  {macroErrors.map((error) => (
+                    <div key={error}>{error}</div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  onClick={handleSaveMacros}
+                  className="px-3 py-1.5 text-xs bg-accent text-white rounded hover:opacity-90 transition-opacity disabled:opacity-50"
+                  disabled={!macrosDirty}
+                >
+                  Save Shortcuts
+                </button>
+                <button
+                  onClick={handleResetMacros}
+                  className="px-3 py-1.5 text-xs border border-card-04 rounded hover:bg-card-02 transition-colors"
+                >
+                  Reset Defaults
                 </button>
               </div>
             </div>
