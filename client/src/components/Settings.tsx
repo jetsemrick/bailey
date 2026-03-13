@@ -154,7 +154,7 @@ export default function Settings() {
                   max={MAX_FONT_SIZE}
                   value={fontSize}
                   onChange={(e) => handleFontSizeChange(parseInt(e.target.value, 10))}
-                  className="flex-1"
+                  className="w-1/2 min-w-[180px]"
                 />
                 <button
                   onClick={() => handleFontSizeChange(DEFAULT_FONT_SIZE)}

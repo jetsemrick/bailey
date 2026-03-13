@@ -26,8 +26,6 @@ export const MACRO_ACTION_OPTIONS: { value: MacroAction; label: string }[] = [
 const MACRO_ACTION_SET = new Set<MacroAction>(MACRO_ACTION_OPTIONS.map((option) => option.value));
 
 export const RESERVED_SHORTCUTS = new Set<string>([
-  'Ctrl+N',
-  'Ctrl+Shift+N',
   'Ctrl+T',
   'Ctrl+W',
   'Ctrl+L',
@@ -43,7 +41,7 @@ export const DEFAULT_KEYBOARD_MACROS: KeyboardMacro[] = [
   {
     id: 'builtin-next-flow',
     name: 'Next Flow Sheet',
-    shortcut: 'Alt+N',
+    shortcut: 'Ctrl+N',
     actions: ['next_flow_sheet'],
   },
   {
@@ -170,10 +168,15 @@ function coerceMacro(candidate: unknown): KeyboardMacro | null {
   const raw = candidate as Partial<KeyboardMacro>;
   const id = typeof raw.id === 'string' ? raw.id.trim() : '';
   const name = typeof raw.name === 'string' ? raw.name.trim() : '';
-  const shortcut = typeof raw.shortcut === 'string' ? normalizeShortcut(raw.shortcut) : null;
+  let shortcut = typeof raw.shortcut === 'string' ? normalizeShortcut(raw.shortcut) : null;
   const actions = Array.isArray(raw.actions)
     ? raw.actions.filter((value): value is MacroAction => typeof value === 'string' && MACRO_ACTION_SET.has(value as MacroAction))
     : [];
+
+  // Migrate legacy default next-flow shortcut (Alt+N) to Ctrl+N.
+  if (id === 'builtin-next-flow' && shortcut === 'Alt+N') {
+    shortcut = 'Ctrl+N';
+  }
 
   if (!id || !name || !shortcut || actions.length === 0) return null;
   return { id, name, shortcut, actions };

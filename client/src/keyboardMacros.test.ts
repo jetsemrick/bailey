@@ -54,7 +54,7 @@ describe('keyboardMacros', () => {
       { ...second, id: 'reserved-shortcut', shortcut: 'Ctrl+S' },
     ]);
 
-    expect(errors).toContain('"Alt+N" is assigned to multiple macros.');
+    expect(errors).toContain('"Ctrl+N" is assigned to multiple macros.');
     expect(errors).toContain('"Ctrl+S" is reserved by browser or built-in shortcuts.');
   });
 
