@@ -21,13 +21,8 @@ import { Trash2, X } from 'lucide-react';
 import { SPEECH_COLUMNS, type CellColor } from '../db/types';
 import type { useFlowGrid } from '../hooks/useFlowGrid';
 import { useUndoRedo } from '../hooks/useUndoRedo';
-import {
-  KEYBOARD_MACROS_STORAGE_KEY,
-  KEYBOARD_MACROS_UPDATED_EVENT,
-  loadKeyboardMacros,
-  shortcutFromKeyboardEvent,
-  type MacroAction,
-} from '../keyboardMacros';
+import { shortcutFromKeyboardEvent, type MacroAction } from '../keyboardMacros';
+import { useKeyboardMacrosContext } from '../contexts/KeyboardMacrosContext';
 
 type FlowGridApi = ReturnType<typeof useFlowGrid>;
 
@@ -322,7 +317,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(0);
   const hasScrolledToEndRef = useRef(false);
-  const [macros, setMacros] = useState(() => loadKeyboardMacros());
+  const { macros } = useKeyboardMacrosContext();
   const selectedCellRef = useRef<{ col: number; row: number } | null>(null);
 
   // Track container height to fill viewport with rows
@@ -381,22 +376,6 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
   useEffect(() => {
     selectedCellRef.current = selectedCell;
   }, [selectedCell]);
-
-  useEffect(() => {
-    const reloadMacros = () => setMacros(loadKeyboardMacros());
-    const handleStorage = (event: StorageEvent) => {
-      if (!event.key || event.key === KEYBOARD_MACROS_STORAGE_KEY) {
-        reloadMacros();
-      }
-    };
-
-    window.addEventListener(KEYBOARD_MACROS_UPDATED_EVENT, reloadMacros);
-    window.addEventListener('storage', handleStorage);
-    return () => {
-      window.removeEventListener(KEYBOARD_MACROS_UPDATED_EVENT, reloadMacros);
-      window.removeEventListener('storage', handleStorage);
-    };
-  }, []);
 
   // Keep selected cell fully visible and never under sticky column header
   useEffect(() => {

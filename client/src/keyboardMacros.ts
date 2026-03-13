@@ -12,9 +12,6 @@ export interface KeyboardMacro {
   actions: MacroAction[];
 }
 
-export const KEYBOARD_MACROS_STORAGE_KEY = 'bailey-keyboard-macros';
-export const KEYBOARD_MACROS_UPDATED_EVENT = 'bailey:keyboard-macros-updated';
-
 export const MACRO_ACTION_OPTIONS: { value: MacroAction; label: string }[] = [
   { value: 'next_flow_sheet', label: 'Next flow sheet' },
   { value: 'insert_5_cells', label: 'Insert 5 cells' },
@@ -69,15 +66,6 @@ export const DEFAULT_KEYBOARD_MACROS: KeyboardMacro[] = [
     actions: ['move_down_4_rows'],
   },
 ];
-
-function getStorage(): Storage | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
 
 function normalizePrimaryKey(key: string): string {
   const raw = key.trim();
@@ -156,32 +144,6 @@ export function shortcutFromKeyboardEvent(event: {
   return ordered.join('+');
 }
 
-function cloneDefaults(): KeyboardMacro[] {
-  return DEFAULT_KEYBOARD_MACROS.map((macro) => ({
-    ...macro,
-    actions: [...macro.actions],
-  }));
-}
-
-function coerceMacro(candidate: unknown): KeyboardMacro | null {
-  if (!candidate || typeof candidate !== 'object') return null;
-  const raw = candidate as Partial<KeyboardMacro>;
-  const id = typeof raw.id === 'string' ? raw.id.trim() : '';
-  const name = typeof raw.name === 'string' ? raw.name.trim() : '';
-  let shortcut = typeof raw.shortcut === 'string' ? normalizeShortcut(raw.shortcut) : null;
-  const actions = Array.isArray(raw.actions)
-    ? raw.actions.filter((value): value is MacroAction => typeof value === 'string' && MACRO_ACTION_SET.has(value as MacroAction))
-    : [];
-
-  // Migrate legacy default next-flow shortcut (Alt+N) to Ctrl+N.
-  if (id === 'builtin-next-flow' && shortcut === 'Alt+N') {
-    shortcut = 'Ctrl+N';
-  }
-
-  if (!id || !name || !shortcut || actions.length === 0) return null;
-  return { id, name, shortcut, actions };
-}
-
 export function validateKeyboardMacros(macros: KeyboardMacro[]): string[] {
   const errors: string[] = [];
   const usedShortcuts = new Map<string, string>();
@@ -218,49 +180,6 @@ export function validateKeyboardMacros(macros: KeyboardMacro[]): string[] {
   }
 
   return errors;
-}
-
-export function loadKeyboardMacros(): KeyboardMacro[] {
-  const storage = getStorage();
-  if (!storage) return cloneDefaults();
-
-  try {
-    const raw = storage.getItem(KEYBOARD_MACROS_STORAGE_KEY);
-    if (!raw) return cloneDefaults();
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return cloneDefaults();
-
-    const coerced = parsed
-      .map((candidate) => coerceMacro(candidate))
-      .filter((macro): macro is KeyboardMacro => macro !== null);
-    const errors = validateKeyboardMacros(coerced);
-    if (coerced.length === 0 || errors.length > 0) return cloneDefaults();
-    return coerced;
-  } catch {
-    return cloneDefaults();
-  }
-}
-
-export function saveKeyboardMacros(macros: KeyboardMacro[]): string[] {
-  const normalized = macros
-    .map((macro) => ({
-      ...macro,
-      name: macro.name.trim(),
-      shortcut: normalizeShortcut(macro.shortcut) ?? '',
-      actions: [...macro.actions],
-    }));
-
-  const errors = validateKeyboardMacros(normalized);
-  if (errors.length > 0) return errors;
-
-  const storage = getStorage();
-  if (!storage) return [];
-
-  storage.setItem(KEYBOARD_MACROS_STORAGE_KEY, JSON.stringify(normalized));
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new Event(KEYBOARD_MACROS_UPDATED_EVENT));
-  }
-  return [];
 }
 
 export function createEmptyMacro(): KeyboardMacro {

@@ -1,3 +1,5 @@
+import type { KeyboardMacro } from '../keyboardMacros';
+
 export type TournamentType = 'judge' | 'competitor';
 export type UserRole = 'Admin' | 'User';
 
@@ -129,6 +131,14 @@ export interface RoundAnalytics {
   notes_aff: string;
   notes_neg: string;
   notes_decision?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KeyboardMacrosRow {
+  id: string;
+  user_id: string;
+  macros: KeyboardMacro[];
   created_at: string;
   updated_at: string;
 }

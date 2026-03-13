@@ -1,14 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  createEmptyMacro,
-  DEFAULT_KEYBOARD_MACROS,
-  MACRO_ACTION_OPTIONS,
-  type MacroAction,
-  type KeyboardMacro,
-  loadKeyboardMacros,
-  saveKeyboardMacros,
-  shortcutFromKeyboardEvent,
-} from '../keyboardMacros';
+import { MACRO_ACTION_OPTIONS, type KeyboardMacro, shortcutFromKeyboardEvent } from '../keyboardMacros';
+import { useKeyboardMacrosContext } from '../contexts/KeyboardMacrosContext';
 
 const FONT_SIZE_KEY = 'bailey-font-size';
 const DEFAULT_FONT_SIZE = 14;
@@ -16,10 +8,11 @@ const MIN_FONT_SIZE = 8;
 const MAX_FONT_SIZE = 24;
 
 export default function Settings() {
+  const { macros: serverMacros, loading: macrosLoading, save, reset } = useKeyboardMacrosContext();
   const [isOpen, setIsOpen] = useState(false);
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
-  const [macros, setMacros] = useState<KeyboardMacro[]>(() => loadKeyboardMacros());
-  const [savedMacros, setSavedMacros] = useState<KeyboardMacro[]>(() => loadKeyboardMacros());
+  const [macros, setMacros] = useState<KeyboardMacro[]>([]);
+  const [savedMacros, setSavedMacros] = useState<KeyboardMacro[]>([]);
   const [macroErrors, setMacroErrors] = useState<string[]>([]);
 
   useEffect(() => {
@@ -44,11 +37,10 @@ export default function Settings() {
 
   useEffect(() => {
     if (!isOpen) return;
-    const latest = loadKeyboardMacros();
-    setMacros(latest);
-    setSavedMacros(latest);
+    setMacros(serverMacros);
+    setSavedMacros(serverMacros);
     setMacroErrors([]);
-  }, [isOpen]);
+  }, [isOpen, serverMacros]);
 
   const macrosDirty = useMemo(
     () => JSON.stringify(macros) !== JSON.stringify(savedMacros),
@@ -82,27 +74,17 @@ export default function Settings() {
     updateMacro(id, (macro) => ({ ...macro, shortcut }));
   };
 
-  const handleAddMacro = () => {
-    setMacros((prev) => [...prev, createEmptyMacro()]);
-    setMacroErrors([]);
+  const handleSaveMacros = async () => {
+    const errors = await save(macros);
+    setMacroErrors(errors);
+    if (errors.length === 0) {
+      setSavedMacros(macros);
+    }
   };
 
-  const handleSaveMacros = () => {
-    const errors = saveKeyboardMacros(macros);
+  const handleResetMacros = async () => {
+    const errors = await reset();
     setMacroErrors(errors);
-    if (errors.length > 0) return;
-    const latest = loadKeyboardMacros();
-    setMacros(latest);
-    setSavedMacros(latest);
-  };
-
-  const handleResetMacros = () => {
-    const errors = saveKeyboardMacros(DEFAULT_KEYBOARD_MACROS);
-    setMacroErrors(errors);
-    if (errors.length > 0) return;
-    const latest = loadKeyboardMacros();
-    setMacros(latest);
-    setSavedMacros(latest);
   };
 
   return (
@@ -166,101 +148,35 @@ export default function Settings() {
             </div>
 
             <div className="mt-6 pt-6 border-t border-card-04 space-y-3">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-semibold">Keyboard Macros</h3>
-                  <p className="text-xs text-foreground/60 mt-1">
-                    Bind shortcuts to one or more actions. Click a shortcut field and press the key combo. Backspace clears it.
-                  </p>
-                </div>
-                <button
-                  onClick={handleAddMacro}
-                  className="px-2.5 py-1.5 text-xs bg-card-02 rounded hover:bg-card-03 transition-colors"
-                >
-                  Add Macro
-                </button>
+              {macrosLoading && (
+                <div className="text-sm text-foreground/60">Loading macros...</div>
+              )}
+              <div>
+                <h3 className="text-sm font-semibold">Keyboard Shortcuts</h3>
+                <p className="text-xs text-foreground/60 mt-1">
+                  Change keybinds for built-in actions. Click a shortcut field and press the key combo. Backspace clears it.
+                </p>
               </div>
 
               <div className="space-y-3">
                 {macros.map((macro) => (
-                  <div key={macro.id} className="border border-card-04 rounded-lg p-3 bg-card-01 space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-[1fr_220px_auto] gap-2">
-                      <input
-                        value={macro.name}
-                        onChange={(event) =>
-                          updateMacro(macro.id, (current) => ({ ...current, name: event.target.value }))
-                        }
-                        className="px-2 py-1.5 text-sm bg-background border border-card-04 rounded focus:outline-none focus:border-accent"
-                        placeholder="Macro name"
-                      />
-                      <input
-                        value={macro.shortcut}
-                        onKeyDown={(event) => handleShortcutCapture(macro.id, event)}
-                        readOnly
-                        className="px-2 py-1.5 text-sm font-mono bg-background border border-card-04 rounded focus:outline-none focus:border-accent"
-                        placeholder="Press shortcut"
-                        title="Click and press a shortcut"
-                      />
-                      <button
-                        onClick={() => setMacros((prev) => prev.filter((item) => item.id !== macro.id))}
-                        className="px-2 py-1.5 text-xs text-red-500 border border-red-500/30 rounded hover:bg-red-500/10 transition-colors"
-                      >
-                        Delete
-                      </button>
+                  <div key={macro.id} className="border border-card-04 rounded-lg p-3 bg-card-01 flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{macro.name}</div>
+                      <div className="text-xs text-foreground/60 mt-0.5">
+                        {macro.actions
+                          .map((a) => MACRO_ACTION_OPTIONS.find((o) => o.value === a)?.label ?? a)
+                          .join(' → ')}
+                      </div>
                     </div>
-
-                    <div className="space-y-2">
-                      <div className="text-xs font-medium text-foreground/70">Action sequence</div>
-                      {macro.actions.map((action, index) => (
-                        <div key={`${macro.id}-action-${index}`} className="flex items-center gap-2">
-                          <select
-                            value={action}
-                            onChange={(event) =>
-                              updateMacro(macro.id, (current) => ({
-                                ...current,
-                                actions: current.actions.map((step, stepIndex) =>
-                                  stepIndex === index ? (event.target.value as MacroAction) : step
-                                ),
-                              }))
-                            }
-                            className="px-2 py-1.5 text-sm bg-background border border-card-04 rounded focus:outline-none focus:border-accent"
-                          >
-                            {MACRO_ACTION_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            onClick={() =>
-                              updateMacro(macro.id, (current) => ({
-                                ...current,
-                                actions:
-                                  current.actions.length > 1
-                                    ? current.actions.filter((_, stepIndex) => stepIndex !== index)
-                                    : current.actions,
-                              }))
-                            }
-                            className="px-2 py-1.5 text-xs rounded border border-card-04 hover:bg-card-02 transition-colors"
-                            disabled={macro.actions.length <= 1}
-                            title={macro.actions.length <= 1 ? 'Macros require at least one action' : 'Remove action'}
-                          >
-                            Remove Step
-                          </button>
-                        </div>
-                      ))}
-                      <button
-                        onClick={() =>
-                          updateMacro(macro.id, (current) => ({
-                            ...current,
-                            actions: [...current.actions, 'next_flow_sheet'],
-                          }))
-                        }
-                        className="px-2 py-1 text-xs rounded bg-card-02 hover:bg-card-03 transition-colors"
-                      >
-                        Add Step
-                      </button>
-                    </div>
+                    <input
+                      value={macro.shortcut}
+                      onKeyDown={(event) => handleShortcutCapture(macro.id, event)}
+                      readOnly
+                      className="shrink-0 w-[180px] px-2 py-1.5 text-sm font-mono bg-background border border-card-04 rounded focus:outline-none focus:border-accent"
+                      placeholder="Press shortcut"
+                      title="Click and press a shortcut"
+                    />
                   </div>
                 ))}
               </div>
@@ -279,7 +195,7 @@ export default function Settings() {
                   className="px-3 py-1.5 text-xs bg-accent text-white rounded hover:opacity-90 transition-opacity disabled:opacity-50"
                   disabled={!macrosDirty}
                 >
-                  Save Macros
+                  Save Shortcuts
                 </button>
                 <button
                   onClick={handleResetMacros}

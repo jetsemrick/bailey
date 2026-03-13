@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest';
 import {
   DEFAULT_KEYBOARD_MACROS,
   normalizeShortcut,
-  saveKeyboardMacros,
   shortcutFromKeyboardEvent,
   validateKeyboardMacros,
 } from './keyboardMacros';
@@ -58,8 +57,8 @@ describe('keyboardMacros', () => {
     expect(errors).toContain('"Ctrl+S" is reserved by browser or built-in shortcuts.');
   });
 
-  test('saveKeyboardMacros rejects invalid macro payloads', () => {
-    const errors = saveKeyboardMacros([
+  test('validateKeyboardMacros rejects invalid macro payloads', () => {
+    const errors = validateKeyboardMacros([
       {
         id: 'bad-macro',
         name: '',

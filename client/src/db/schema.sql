@@ -17,6 +17,7 @@ DROP FUNCTION IF EXISTS handle_new_user();
 DROP FUNCTION IF EXISTS prevent_role_self_escalation();
 
 -- Drop new tables if re-running
+DROP TABLE IF EXISTS keyboard_macros CASCADE;
 DROP TABLE IF EXISTS round_analytics CASCADE;
 DROP TABLE IF EXISTS flow_analytics CASCADE;
 DROP TABLE IF EXISTS flow_cells CASCADE;
@@ -119,6 +120,14 @@ CREATE TABLE round_analytics (
   updated_at timestamptz DEFAULT now()
 );
 
+CREATE TABLE keyboard_macros (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  macros jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
 -- ============================================================
 -- Indexes
 -- ============================================================
@@ -135,6 +144,7 @@ CREATE INDEX idx_flow_analytics_flow ON flow_analytics(flow_id);
 CREATE INDEX idx_flow_analytics_user ON flow_analytics(user_id);
 CREATE INDEX idx_round_analytics_round ON round_analytics(round_id);
 CREATE INDEX idx_round_analytics_user ON round_analytics(user_id);
+CREATE INDEX idx_keyboard_macros_user ON keyboard_macros(user_id);
 
 -- ============================================================
 -- Row Level Security
@@ -148,6 +158,7 @@ ALTER TABLE flow_tabs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE flow_cells ENABLE ROW LEVEL SECURITY;
 ALTER TABLE flow_analytics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE round_analytics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE keyboard_macros ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can view own profile" ON profiles
   FOR SELECT USING (auth.uid() = id);
@@ -171,6 +182,9 @@ CREATE POLICY "Users manage own flow analytics" ON flow_analytics
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users manage own round analytics" ON round_analytics
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users manage own macros" ON keyboard_macros
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- ============================================================
@@ -466,3 +480,6 @@ CREATE TRIGGER flow_analytics_updated_at
 
 CREATE TRIGGER round_analytics_updated_at
   BEFORE UPDATE ON round_analytics FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER keyboard_macros_updated_at
+  BEFORE UPDATE ON keyboard_macros FOR EACH ROW EXECUTE FUNCTION update_updated_at();
