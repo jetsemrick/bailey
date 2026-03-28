@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Sidebar from '../components/Sidebar';
@@ -36,6 +36,37 @@ function RoundPageInner() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [viewMode, setViewMode] = useState<'flow' | 'analytics' | 'split'>('flow');
   const [rebuttalFocus, setRebuttalFocus] = useState(true);
+  /** Persists across Flow / Decision view switches (DecisionView unmounts). */
+  const [decisionVisibleFlowIds, setDecisionVisibleFlowIds] = useState<Set<string>>(new Set());
+  const decisionVisibilityReadyRef = useRef(false);
+  const prevFlowIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const ids = new Set(grid.flows.map((f) => f.id));
+    setDecisionVisibleFlowIds((prev) => {
+      if (!decisionVisibilityReadyRef.current && ids.size > 0) {
+        decisionVisibilityReadyRef.current = true;
+        prevFlowIdsRef.current = new Set(ids);
+        return new Set(ids);
+      }
+      if (ids.size === 0) {
+        decisionVisibilityReadyRef.current = false;
+        prevFlowIdsRef.current = new Set();
+        return new Set();
+      }
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (ids.has(id)) next.add(id);
+      }
+      for (const id of ids) {
+        if (!prevFlowIdsRef.current.has(id)) {
+          next.add(id);
+        }
+      }
+      prevFlowIdsRef.current = new Set(ids);
+      return next;
+    });
+  }, [grid.flows]);
 
   useEffect(() => {
     if (!id) return;
@@ -169,7 +200,12 @@ function RoundPageInner() {
             <div className="flex flex-1 overflow-hidden min-h-0">
               <div className="flex flex-col flex-1 min-w-0 border-r border-card-04">
                 {rebuttalFocus ? (
-                  <DecisionView flows={grid.flows} roundId={id} cellsRevision={grid.cellsRevision} />
+                  <DecisionView
+                    flows={grid.flows}
+                    cellsRevision={grid.cellsRevision}
+                    visibleFlowIds={decisionVisibleFlowIds}
+                    onVisibleFlowIdsChange={setDecisionVisibleFlowIds}
+                  />
                 ) : (
                   <FlowGrid grid={grid} defaultScrollToEnd />
                 )}
