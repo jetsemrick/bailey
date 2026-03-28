@@ -81,10 +81,15 @@ CREATE TABLE flow_tabs (
   round_id uuid REFERENCES rounds(id) ON DELETE CASCADE NOT NULL,
   position_name text NOT NULL DEFAULT 'Untitled',
   initiated_by text CHECK (initiated_by IN ('aff', 'neg')) DEFAULT 'aff',
+  tab_kind text CHECK (tab_kind IN ('standard', 'cx')) DEFAULT 'standard',
   display_order integer DEFAULT 0,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS flow_tabs_one_cx_per_round
+  ON flow_tabs (round_id)
+  WHERE tab_kind = 'cx';
 
 CREATE TABLE flow_cells (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

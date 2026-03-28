@@ -12,7 +12,7 @@ import { useFlowGrid } from '../hooks/useFlowGrid';
 import { RoundTimerProvider, useRoundTimer } from '../contexts/RoundTimerContext';
 import { normalizeTimerPreset } from '../lib/timerPreset';
 import * as api from '../db/api';
-import type { Round, Tournament } from '../db/types';
+import type { FlowTabKind, Round, Tournament } from '../db/types';
 import { formatRoundName } from '../db/types';
 
 export default function RoundPage() {
@@ -67,9 +67,13 @@ function RoundPageInner() {
     }
   }, [searchParams, grid.flows, grid.selectFlow, setSearchParams]);
 
-  const handleAddFlow = async (initiatedBy: 'aff' | 'neg', count: number) => {
-    await grid.addFlow(initiatedBy, count);
-    setShowNewFlow(false);
+  const handleAddFlow = async (
+    initiatedBy: 'aff' | 'neg',
+    count: number,
+    tabKind: FlowTabKind = 'standard'
+  ) => {
+    const ok = await grid.addFlow(initiatedBy, count, tabKind);
+    if (ok) setShowNewFlow(false);
   };
 
   if (loadingMeta || grid.loading) {
@@ -211,6 +215,7 @@ function RoundPageInner() {
       {/* New flow dialog */}
       {showNewFlow && (
         <NewFlowDialog
+          hasCxTab={grid.flows.some((f) => f.tab_kind === 'cx')}
           onSubmit={handleAddFlow}
           onCancel={() => setShowNewFlow(false)}
         />

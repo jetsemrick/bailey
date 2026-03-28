@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Flow, FlowCell, CellColor, Round } from '../db/types';
+import type { Flow, FlowCell, CellColor, FlowTabKind, Round } from '../db/types';
 import * as api from '../db/api';
 
 const DEBOUNCE_MS = 500;
@@ -283,24 +283,53 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
 
   // -- Flow tab CRUD --
   const addFlow = useCallback(
-    async (initiatedBy: 'aff' | 'neg', count: number = 1) => {
-      if (!roundId || count < 1) return;
+    async (initiatedBy: 'aff' | 'neg', count: number = 1, tabKind: FlowTabKind = 'standard'): Promise<boolean> => {
+      if (!roundId || count < 1) return false;
+      setError(null);
+      if (tabKind === 'cx') {
+        if (flows.some((f) => f.tab_kind === 'cx')) {
+          setError('Only one cross-examination (CX) tab is allowed per round.');
+          return false;
+        }
+        try {
+          const flow = await api.createFlow(roundId, {
+            position_name: 'CX',
+            initiated_by: 'aff',
+            display_order: flows.length,
+            tab_kind: 'cx',
+          });
+          setFlows((prev) => [...prev, flow]);
+          setActiveFlowId(flow.id);
+          setCells(new Map());
+          return true;
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to create CX tab');
+          return false;
+        }
+      }
       const baseOrder = flows.length;
       const existingBySide = flows.filter((f) => f.initiated_by === initiatedBy).length;
       const prefix = initiatedBy === 'aff' ? 'AFF' : 'NEG';
       const created: Awaited<ReturnType<typeof api.createFlow>>[] = [];
-      for (let i = 0; i < count; i++) {
-        const positionName = `${prefix} ${existingBySide + i + 1}`;
-        const flow = await api.createFlow(roundId, {
-          position_name: positionName,
-          initiated_by: initiatedBy,
-          display_order: baseOrder + i,
-        });
-        created.push(flow);
+      try {
+        for (let i = 0; i < count; i++) {
+          const positionName = `${prefix} ${existingBySide + i + 1}`;
+          const flow = await api.createFlow(roundId, {
+            position_name: positionName,
+            initiated_by: initiatedBy,
+            display_order: baseOrder + i,
+            tab_kind: 'standard',
+          });
+          created.push(flow);
+        }
+        setFlows((prev) => [...prev, ...created]);
+        setActiveFlowId(created[created.length - 1].id);
+        setCells(new Map());
+        return true;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to create tab');
+        return false;
       }
-      setFlows((prev) => [...prev, ...created]);
-      setActiveFlowId(created[created.length - 1].id);
-      setCells(new Map());
     },
     [roundId, flows]
   );

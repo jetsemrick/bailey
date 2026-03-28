@@ -104,12 +104,16 @@ export function formatRoundName(r: Round, teamName?: string | null): string {
   return getRoundLabel(r.round_number);
 }
 
+export type FlowTabKind = 'standard' | 'cx';
+
 export interface Flow {
   id: string;
   user_id: string;
   round_id: string;
   position_name: string;
   initiated_by: 'aff' | 'neg';
+  /** CX = cross-examination sheet; at most one per round (DEB-28). */
+  tab_kind?: FlowTabKind;
   display_order: number;
   created_at: string;
   updated_at: string;

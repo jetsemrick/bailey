@@ -224,8 +224,14 @@ export async function listFlows(roundId: string): Promise<Flow[]> {
 
 export async function createFlow(
   roundId: string,
-  fields: Partial<Pick<Flow, 'position_name' | 'initiated_by' | 'display_order'>>
+  fields: Partial<Pick<Flow, 'position_name' | 'initiated_by' | 'display_order' | 'tab_kind'>>
 ): Promise<Flow> {
+  if (fields.tab_kind === 'cx') {
+    const existing = await listFlows(roundId);
+    if (existing.some((f) => f.tab_kind === 'cx')) {
+      throw new Error('Only one cross-examination (CX) tab is allowed per round.');
+    }
+  }
   const userId = await uid();
   const { data, error } = await supabase
     .from('flow_tabs')
@@ -238,7 +244,7 @@ export async function createFlow(
 
 export async function updateFlow(
   id: string,
-  fields: Partial<Pick<Flow, 'position_name' | 'initiated_by' | 'display_order'>>
+  fields: Partial<Pick<Flow, 'position_name' | 'initiated_by' | 'display_order' | 'tab_kind'>>
 ): Promise<Flow> {
   const { data, error } = await supabase
     .from('flow_tabs')
@@ -484,6 +490,7 @@ export async function importRound(
         position_name: flow.position_name,
         initiated_by: flow.initiated_by,
         display_order: flow.display_order,
+        tab_kind: (flow as { tab_kind?: string }).tab_kind ?? 'standard',
       })
       .select()
       .single();
@@ -553,6 +560,7 @@ export async function importTournament(data: ExportedTournament): Promise<string
           position_name: flow.position_name,
           initiated_by: flow.initiated_by,
           display_order: flow.display_order,
+          tab_kind: (flow as { tab_kind?: string }).tab_kind ?? 'standard',
         })
         .select()
         .single();
