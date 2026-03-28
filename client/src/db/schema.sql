@@ -55,6 +55,7 @@ CREATE TABLE tournaments (
   location text,
   tournament_type text CHECK (tournament_type IN ('judge', 'competitor')) DEFAULT 'competitor',
   team_name text,
+  timer_preset text CHECK (timer_preset IN ('college', 'high_school')) DEFAULT 'high_school',
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );

@@ -123,7 +123,8 @@ export async function getTournament(id: string): Promise<Tournament> {
 }
 
 export async function createTournament(
-  fields: Pick<Tournament, 'name'> & Partial<Pick<Tournament, 'date' | 'location' | 'tournament_type' | 'team_name'>>
+  fields: Pick<Tournament, 'name'> &
+    Partial<Pick<Tournament, 'date' | 'location' | 'tournament_type' | 'team_name' | 'timer_preset'>>
 ): Promise<Tournament> {
   const userId = await uid();
   const { data, error } = await supabase
@@ -137,7 +138,7 @@ export async function createTournament(
 
 export async function updateTournament(
   id: string,
-  fields: Partial<Pick<Tournament, 'name' | 'date' | 'location' | 'tournament_type' | 'team_name'>>
+  fields: Partial<Pick<Tournament, 'name' | 'date' | 'location' | 'tournament_type' | 'team_name' | 'timer_preset'>>
 ): Promise<Tournament> {
   const { data, error } = await supabase
     .from('tournaments')
@@ -519,6 +520,7 @@ export async function importTournament(data: ExportedTournament): Promise<string
       location: data.tournament.location,
       tournament_type: (data.tournament as { tournament_type?: string }).tournament_type ?? 'competitor',
       team_name: (data.tournament as { team_name?: string | null }).team_name ?? null,
+      timer_preset: (data.tournament as { timer_preset?: string }).timer_preset ?? 'high_school',
     })
     .select()
     .single();

@@ -1,6 +1,8 @@
 import type { KeyboardMacro } from '../keyboardMacros';
 
 export type TournamentType = 'judge' | 'competitor';
+/** College vs high school speech lengths (DEB-29). */
+export type TimerPreset = 'college' | 'high_school';
 export type UserRole = 'Admin' | 'User';
 
 export interface Profile {
@@ -44,6 +46,7 @@ export interface Tournament {
   location: string | null;
   tournament_type?: TournamentType;
   team_name?: string | null;
+  timer_preset?: TimerPreset;
   created_at: string;
   updated_at: string;
 }

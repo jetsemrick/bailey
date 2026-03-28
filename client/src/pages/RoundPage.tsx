@@ -9,11 +9,22 @@ import RoundAnalytics from '../components/RoundAnalytics';
 import DecisionView from '../components/DecisionView';
 import NewFlowDialog from '../components/NewFlowDialog';
 import { useFlowGrid } from '../hooks/useFlowGrid';
+import { RoundTimerProvider, useRoundTimer } from '../contexts/RoundTimerContext';
+import { normalizeTimerPreset } from '../lib/timerPreset';
 import * as api from '../db/api';
 import type { Round, Tournament } from '../db/types';
 import { formatRoundName } from '../db/types';
 
 export default function RoundPage() {
+  return (
+    <RoundTimerProvider>
+      <RoundPageInner />
+    </RoundTimerProvider>
+  );
+}
+
+function RoundPageInner() {
+  const { setTimerPreset } = useRoundTimer();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -38,6 +49,12 @@ export default function RoundPage() {
       .catch(() => navigate('/'))
       .finally(() => setLoadingMeta(false));
   }, [id, navigate]);
+
+  useEffect(() => {
+    if (tournament) {
+      setTimerPreset(normalizeTimerPreset(tournament.timer_preset));
+    }
+  }, [tournament, setTimerPreset]);
 
   // Select flow from URL when navigating from sidebar (e.g. ?flow=xxx)
   useEffect(() => {

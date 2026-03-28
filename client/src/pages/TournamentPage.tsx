@@ -52,7 +52,14 @@ export default function TournamentPage() {
     setDeleteRoundTarget(null);
   };
 
-  const handleUpdateTournament = async (data: { name: string; date: string | null; location: string | null; tournament_type: 'judge' | 'competitor'; team_name?: string | null }) => {
+  const handleUpdateTournament = async (data: {
+    name: string;
+    date: string | null;
+    location: string | null;
+    tournament_type: 'judge' | 'competitor';
+    team_name?: string | null;
+    timer_preset: 'college' | 'high_school';
+  }) => {
     if (!id) return;
     try {
       const updated = await api.updateTournament(id, data);
@@ -258,6 +265,7 @@ export default function TournamentPage() {
             location: tournament.location ?? '',
             tournament_type: tournament.tournament_type ?? stateTournamentType ?? 'competitor',
             team_name: tournament.team_name ?? '',
+            timer_preset: tournament.timer_preset ?? 'high_school',
           }}
           onSubmit={handleUpdateTournament}
           onCancel={() => setShowEditTournament(false)}

@@ -1,9 +1,23 @@
 import { useState, type FormEvent } from 'react';
-import type { TournamentType } from '../db/types';
+import type { TimerPreset, TournamentType } from '../db/types';
 
 interface TournamentFormProps {
-  initial?: { name: string; date: string; location: string; tournament_type?: TournamentType; team_name?: string };
-  onSubmit: (data: { name: string; date: string | null; location: string | null; tournament_type: TournamentType; team_name?: string | null }) => void;
+  initial?: {
+    name: string;
+    date: string;
+    location: string;
+    tournament_type?: TournamentType;
+    team_name?: string;
+    timer_preset?: TimerPreset;
+  };
+  onSubmit: (data: {
+    name: string;
+    date: string | null;
+    location: string | null;
+    tournament_type: TournamentType;
+    team_name?: string | null;
+    timer_preset: TimerPreset;
+  }) => void;
   onCancel: () => void;
   title: string;
 }
@@ -16,6 +30,7 @@ export default function TournamentForm({ initial, onSubmit, onCancel, title }: T
   const [location, setLocation] = useState(initial?.location ?? '');
   const [tournamentType, setTournamentType] = useState<TournamentType>(initial?.tournament_type ?? 'competitor');
   const [teamName, setTeamName] = useState(initial?.team_name ?? '');
+  const [timerPreset, setTimerPreset] = useState<TimerPreset>(initial?.timer_preset ?? 'high_school');
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -26,6 +41,7 @@ export default function TournamentForm({ initial, onSubmit, onCancel, title }: T
       location: location || null,
       tournament_type: tournamentType,
       team_name: tournamentType === 'competitor' ? (teamName.trim() || null) : null,
+      timer_preset: timerPreset,
     });
   };
 
@@ -56,6 +72,36 @@ export default function TournamentForm({ initial, onSubmit, onCancel, title }: T
               <option value="competitor">Competitor</option>
               <option value="judge">Judge</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Debate timer</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setTimerPreset('high_school')}
+                className={`flex-1 py-1.5 rounded text-sm font-medium transition-colors ${
+                  timerPreset === 'high_school'
+                    ? 'bg-accent/15 text-accent border border-accent/40'
+                    : 'bg-card-02 text-foreground/70 hover:bg-card-03'
+                }`}
+              >
+                High school
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimerPreset('college')}
+                className={`flex-1 py-1.5 rounded text-sm font-medium transition-colors ${
+                  timerPreset === 'college'
+                    ? 'bg-accent/15 text-accent border border-accent/40'
+                    : 'bg-card-02 text-foreground/70 hover:bg-card-03'
+                }`}
+              >
+                College
+              </button>
+            </div>
+            <p className="text-xs text-foreground/50 mt-1">
+              HS: 8/5 min speech, 10 min prep. College: 9/6 min speech, 10 min prep.
+            </p>
           </div>
           {tournamentType === 'competitor' && (
             <div>
