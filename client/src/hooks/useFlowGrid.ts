@@ -316,7 +316,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
           setCells(new Map());
           return true;
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Failed to create CX tab');
+          setError(api.toError(err, 'Failed to create CX tab').message);
           return false;
         }
       }
@@ -340,7 +340,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
         setCells(new Map());
         return true;
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to create tab');
+        setError(api.toError(err, 'Failed to create tab').message);
         return false;
       }
     },

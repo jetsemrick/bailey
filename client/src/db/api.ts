@@ -26,7 +26,8 @@ function toCount(value: number | string | null | undefined): number {
   return typeof value === 'number' ? value : Number(value ?? 0);
 }
 
-function toError(error: unknown, fallbackMessage: string): Error {
+/** Normalizes Supabase/PostgREST errors for UI and catch blocks. */
+export function toError(error: unknown, fallbackMessage: string): Error {
   if (error instanceof Error) return error;
   if (
     error &&
@@ -37,6 +38,38 @@ function toError(error: unknown, fallbackMessage: string): Error {
     return new Error((error as { message: string }).message);
   }
   return new Error(fallbackMessage);
+}
+
+function pgErrorCode(error: unknown): string | undefined {
+  if (error && typeof error === 'object' && 'code' in error) {
+    const c = (error as { code: unknown }).code;
+    return typeof c === 'string' ? c : undefined;
+  }
+  return undefined;
+}
+
+const FLOW_TABS_SCHEMA_CACHE_HINT =
+  "PostgREST's schema cache is out of date. In the Supabase SQL Editor run: NOTIFY pgrst, 'reload schema';  If you have not added tab_kind yet, run client/src/db/migrations/015_add_tab_kind_to_flow_tabs.sql first, then NOTIFY again. If NOTIFY does not help, restart the project (Dashboard → Settings → General).";
+
+/** PGRST204 / schema-cache errors when tab_kind or flow_tabs is missing from PostgREST's cache. */
+function mapFlowTabsSchemaCacheError(error: unknown): Error | null {
+  const code = pgErrorCode(error);
+  const msg = error instanceof Error ? error.message : String(error);
+  const mentionsFlowTabs = /flow_tabs/i.test(msg) || /tab_kind/i.test(msg);
+  if (code === 'PGRST204' && mentionsFlowTabs) {
+    return new Error(FLOW_TABS_SCHEMA_CACHE_HINT);
+  }
+  if (/schema cache/i.test(msg) && mentionsFlowTabs) {
+    return new Error(FLOW_TABS_SCHEMA_CACHE_HINT);
+  }
+  return null;
+}
+
+/** When PostgREST omits tab_kind from JSON, infer CX from the reserved position name. */
+function normalizeFlowTabKind(row: Flow): Flow {
+  const tab_kind =
+    row.tab_kind ?? (row.position_name === 'CX' ? 'cx' : 'standard');
+  return { ...row, tab_kind };
 }
 
 export async function getCurrentProfile(): Promise<Profile | null> {
@@ -218,8 +251,12 @@ export async function listFlows(roundId: string): Promise<Flow[]> {
     .select('*')
     .eq('round_id', roundId)
     .order('display_order', { ascending: true });
-  if (error) throw error;
-  return data ?? [];
+  if (error) {
+    const mapped = mapFlowTabsSchemaCacheError(error);
+    if (mapped) throw mapped;
+    throw error;
+  }
+  return (data ?? []).map((row) => normalizeFlowTabKind(row as Flow));
 }
 
 export async function createFlow(
@@ -228,18 +265,41 @@ export async function createFlow(
 ): Promise<Flow> {
   if (fields.tab_kind === 'cx') {
     const existing = await listFlows(roundId);
-    if (existing.some((f) => f.tab_kind === 'cx')) {
+    if (existing.some((f) => f.tab_kind === 'cx' || f.position_name === 'CX')) {
       throw new Error('Only one cross-examination (CX) tab is allowed per round.');
     }
   }
   const userId = await uid();
+  // Never send tab_kind in the REST body: PostgREST can reject unknown columns (PGRST204) when its
+  // schema cache is stale. DB default is standard; trigger 016 sets tab_kind=cx when position_name='CX'.
+  const insertPayload = {
+    user_id: userId,
+    round_id: roundId,
+    position_name: fields.position_name ?? 'Untitled',
+    initiated_by: fields.initiated_by ?? 'aff',
+    display_order: fields.display_order ?? 0,
+  };
   const { data, error } = await supabase
     .from('flow_tabs')
-    .insert({ user_id: userId, round_id: roundId, ...fields })
+    .insert(insertPayload)
     .select()
     .single();
-  if (error) throw error;
-  return data;
+  if (error) {
+    const cacheErr = mapFlowTabsSchemaCacheError(error);
+    if (cacheErr) throw cacheErr;
+    const code = pgErrorCode(error);
+    const msg = error instanceof Error ? error.message : String(error);
+    if (code === '42703' && /tab_kind/i.test(msg)) {
+      throw new Error(
+        'Database is missing tab_kind on flow_tabs. Run migration 015_add_tab_kind_to_flow_tabs.sql in the Supabase SQL Editor.'
+      );
+    }
+    if (fields.tab_kind === 'cx' && code === '23505') {
+      throw new Error('Only one cross-examination (CX) tab is allowed per round.');
+    }
+    throw toError(error, 'Failed to create flow');
+  }
+  return normalizeFlowTabKind(data as Flow);
 }
 
 export async function updateFlow(
@@ -252,7 +312,11 @@ export async function updateFlow(
     .eq('id', id)
     .select()
     .single();
-  if (error) throw error;
+  if (error) {
+    const mapped = mapFlowTabsSchemaCacheError(error);
+    if (mapped) throw mapped;
+    throw error;
+  }
   return data;
 }
 

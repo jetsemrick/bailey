@@ -7,3 +7,6 @@ ALTER TABLE flow_tabs ADD COLUMN IF NOT EXISTS tab_kind text
 CREATE UNIQUE INDEX IF NOT EXISTS flow_tabs_one_cx_per_round
   ON flow_tabs (round_id)
   WHERE tab_kind = 'cx';
+
+-- Reload PostgREST so the API sees new columns (fixes "schema cache" errors on insert/select).
+NOTIFY pgrst, 'reload schema';

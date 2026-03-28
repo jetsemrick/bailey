@@ -91,6 +91,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS flow_tabs_one_cx_per_round
   ON flow_tabs (round_id)
   WHERE tab_kind = 'cx';
 
+-- CX tabs: set tab_kind in DB when position_name is CX (client omits tab_kind for PostgREST compatibility).
+CREATE OR REPLACE FUNCTION public.flow_tabs_set_cx_from_position()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.position_name = 'CX' THEN
+    NEW.tab_kind := 'cx';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER flow_tabs_cx_from_position
+  BEFORE INSERT ON flow_tabs
+  FOR EACH ROW
+  EXECUTE FUNCTION public.flow_tabs_set_cx_from_position();
+
 CREATE TABLE flow_cells (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
