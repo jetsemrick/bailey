@@ -1,12 +1,14 @@
 import { useState, useCallback, useRef } from 'react';
 
-interface CellEdit {
+export interface CellEdit {
   col: number;
   row: number;
   previousContent: string;
   newContent: string;
   previousColor: string | null;
   newColor: string | null;
+  previousComment: string;
+  newComment: string;
 }
 
 const MAX_STACK = 100;
