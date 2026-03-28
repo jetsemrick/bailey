@@ -317,7 +317,7 @@ export async function updateFlow(
     if (mapped) throw mapped;
     throw error;
   }
-  return data;
+  return normalizeFlowTabKind(data as Flow);
 }
 
 export async function deleteFlow(id: string): Promise<void> {
@@ -546,6 +546,8 @@ export async function importRound(
   if (rErr) throw rErr;
 
   for (const flow of data.round.flows) {
+    // Never send tab_kind in the REST body: PostgREST can reject unknown columns (PGRST204) when its
+    // schema cache is stale. DB default is standard; trigger 016 sets tab_kind=cx when position_name='CX'.
     const { data: newFlow, error: fErr } = await supabase
       .from('flow_tabs')
       .insert({
@@ -554,11 +556,14 @@ export async function importRound(
         position_name: flow.position_name,
         initiated_by: flow.initiated_by,
         display_order: flow.display_order,
-        tab_kind: (flow as { tab_kind?: string }).tab_kind ?? 'standard',
       })
       .select()
       .single();
-    if (fErr) throw fErr;
+    if (fErr) {
+      const cacheErr = mapFlowTabsSchemaCacheError(fErr);
+      if (cacheErr) throw cacheErr;
+      throw fErr;
+    }
 
     if (flow.cells.length > 0) {
       const cellRows = flow.cells.map((c) => ({
@@ -616,6 +621,8 @@ export async function importTournament(data: ExportedTournament): Promise<string
     if (rErr) throw rErr;
 
     for (const flow of round.flows) {
+      // Never send tab_kind in the REST body: PostgREST can reject unknown columns (PGRST204) when its
+      // schema cache is stale. DB default is standard; trigger 016 sets tab_kind=cx when position_name='CX'.
       const { data: newFlow, error: fErr } = await supabase
         .from('flow_tabs')
         .insert({
@@ -624,11 +631,14 @@ export async function importTournament(data: ExportedTournament): Promise<string
           position_name: flow.position_name,
           initiated_by: flow.initiated_by,
           display_order: flow.display_order,
-          tab_kind: (flow as { tab_kind?: string }).tab_kind ?? 'standard',
         })
         .select()
         .single();
-      if (fErr) throw fErr;
+      if (fErr) {
+        const cacheErr = mapFlowTabsSchemaCacheError(fErr);
+        if (cacheErr) throw cacheErr;
+        throw fErr;
+      }
 
       if (flow.cells.length > 0) {
         const cellRows = flow.cells.map((c) => ({
