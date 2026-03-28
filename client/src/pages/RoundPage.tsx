@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Sidebar from '../components/Sidebar';
@@ -9,11 +9,22 @@ import RoundAnalytics from '../components/RoundAnalytics';
 import DecisionView from '../components/DecisionView';
 import NewFlowDialog from '../components/NewFlowDialog';
 import { useFlowGrid } from '../hooks/useFlowGrid';
+import { RoundTimerProvider, useRoundTimer } from '../contexts/RoundTimerContext';
+import { normalizeTimerPreset } from '../lib/timerPreset';
 import * as api from '../db/api';
-import type { Round, Tournament } from '../db/types';
+import type { FlowTabKind, Round, Tournament } from '../db/types';
 import { formatRoundName } from '../db/types';
 
 export default function RoundPage() {
+  return (
+    <RoundTimerProvider>
+      <RoundPageInner />
+    </RoundTimerProvider>
+  );
+}
+
+function RoundPageInner() {
+  const { setTimerPreset } = useRoundTimer();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -25,6 +36,37 @@ export default function RoundPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [viewMode, setViewMode] = useState<'flow' | 'analytics' | 'split'>('flow');
   const [rebuttalFocus, setRebuttalFocus] = useState(true);
+  /** Persists across Flow / Decision view switches (DecisionView unmounts). */
+  const [decisionVisibleFlowIds, setDecisionVisibleFlowIds] = useState<Set<string>>(new Set());
+  const decisionVisibilityReadyRef = useRef(false);
+  const prevFlowIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const ids = new Set(grid.flows.map((f) => f.id));
+    setDecisionVisibleFlowIds((prev) => {
+      if (!decisionVisibilityReadyRef.current && ids.size > 0) {
+        decisionVisibilityReadyRef.current = true;
+        prevFlowIdsRef.current = new Set(ids);
+        return new Set(ids);
+      }
+      if (ids.size === 0) {
+        decisionVisibilityReadyRef.current = false;
+        prevFlowIdsRef.current = new Set();
+        return new Set();
+      }
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (ids.has(id)) next.add(id);
+      }
+      for (const id of ids) {
+        if (!prevFlowIdsRef.current.has(id)) {
+          next.add(id);
+        }
+      }
+      prevFlowIdsRef.current = new Set(ids);
+      return next;
+    });
+  }, [grid.flows]);
 
   useEffect(() => {
     if (!id) return;
@@ -39,6 +81,12 @@ export default function RoundPage() {
       .finally(() => setLoadingMeta(false));
   }, [id, navigate]);
 
+  useEffect(() => {
+    if (tournament) {
+      setTimerPreset(normalizeTimerPreset(tournament.timer_preset));
+    }
+  }, [tournament, setTimerPreset]);
+
   // Select flow from URL when navigating from sidebar (e.g. ?flow=xxx)
   useEffect(() => {
     const flowId = searchParams.get('flow');
@@ -50,9 +98,13 @@ export default function RoundPage() {
     }
   }, [searchParams, grid.flows, grid.selectFlow, setSearchParams]);
 
-  const handleAddFlow = async (initiatedBy: 'aff' | 'neg', count: number) => {
-    await grid.addFlow(initiatedBy, count);
-    setShowNewFlow(false);
+  const handleAddFlow = async (
+    initiatedBy: 'aff' | 'neg',
+    count: number,
+    tabKind: FlowTabKind = 'standard'
+  ) => {
+    const ok = await grid.addFlow(initiatedBy, count, tabKind);
+    if (ok) setShowNewFlow(false);
   };
 
   if (loadingMeta || grid.loading) {
@@ -148,7 +200,12 @@ export default function RoundPage() {
             <div className="flex flex-1 overflow-hidden min-h-0">
               <div className="flex flex-col flex-1 min-w-0 border-r border-card-04">
                 {rebuttalFocus ? (
-                  <DecisionView flows={grid.flows} roundId={id} />
+                  <DecisionView
+                    flows={grid.flows}
+                    cellsRevision={grid.cellsRevision}
+                    visibleFlowIds={decisionVisibleFlowIds}
+                    onVisibleFlowIdsChange={setDecisionVisibleFlowIds}
+                  />
                 ) : (
                   <FlowGrid grid={grid} defaultScrollToEnd />
                 )}
@@ -194,6 +251,7 @@ export default function RoundPage() {
       {/* New flow dialog */}
       {showNewFlow && (
         <NewFlowDialog
+          hasCxTab={grid.flows.some((f) => f.tab_kind === 'cx')}
           onSubmit={handleAddFlow}
           onCancel={() => setShowNewFlow(false)}
         />

@@ -1,18 +1,25 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import { Flow, FlowCell } from '../db/types';
 import * as api from '../db/api';
 import Cell from './Cell';
 
 interface DecisionViewProps {
   flows: Flow[];
-  roundId: string;
+  /** Bumps when flow grid cells change anywhere (DEB-27). */
+  cellsRevision: number;
+  /** Lifted to RoundPage so closing sheets survives Flow / Decision tab switches. */
+  visibleFlowIds: Set<string>;
+  onVisibleFlowIdsChange: Dispatch<SetStateAction<Set<string>>>;
 }
 
-export default function DecisionView({ flows }: DecisionViewProps) {
-  const [visibleFlowIds, setVisibleFlowIds] = useState<Set<string>>(new Set());
+export default function DecisionView({
+  flows,
+  cellsRevision,
+  visibleFlowIds,
+  onVisibleFlowIdsChange,
+}: DecisionViewProps) {
   const [cellsByFlow, setCellsByFlow] = useState<Map<string, Map<string, FlowCell>>>(new Map());
   const [loading, setLoading] = useState(true);
-  const initialized = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(0);
 
@@ -26,14 +33,6 @@ export default function DecisionView({ flows }: DecisionViewProps) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-
-  // Initialize visible flows once they load
-  useEffect(() => {
-    if (flows.length > 0 && !initialized.current) {
-      setVisibleFlowIds(new Set(flows.map((f) => f.id)));
-      initialized.current = true;
-    }
-  }, [flows]);
 
   // Fetch cells for all flows
   useEffect(() => {
@@ -67,10 +66,10 @@ export default function DecisionView({ flows }: DecisionViewProps) {
 
     fetchData();
     return () => { mounted = false; };
-  }, [flows]);
+  }, [flows, cellsRevision]);
 
   const toggleFlow = (id: string) => {
-    setVisibleFlowIds((prev) => {
+    onVisibleFlowIdsChange((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -114,7 +113,7 @@ export default function DecisionView({ flows }: DecisionViewProps) {
             <p>No sheets visible.</p>
             {flows.length > 0 && (
                <button 
-                 onClick={() => setVisibleFlowIds(new Set(flows.map(f => f.id)))}
+                 onClick={() => onVisibleFlowIdsChange(new Set(flows.map((f) => f.id)))}
                  className="text-accent hover:underline"
                >
                  Show all sheets

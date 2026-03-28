@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Flow, FlowCell, CellColor, Round } from '../db/types';
+import type { Flow, FlowCell, CellColor, FlowTabKind, Round } from '../db/types';
 import * as api from '../db/api';
+import {
+  clearStoredActiveFlowId,
+  readStoredActiveFlowId,
+  writeStoredActiveFlowId,
+} from '../lib/roundFlowTabStorage';
 
 const DEBOUNCE_MS = 500;
 
@@ -8,8 +13,20 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const [flows, setFlows] = useState<Flow[]>([]);
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [cells, setCells] = useState<Map<string, FlowCell>>(new Map());
+  /** Increments when any flow cells change (DEB-27: DecisionView refetch). */
+  const [cellsRevision, setCellsRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const bumpCellsRevision = useCallback(() => {
+    setCellsRevision((r) => r + 1);
+  }, []);
+
+  // Remember active flow tab per round (browser tab reload / restore)
+  useEffect(() => {
+    if (!roundId || !activeFlowId) return;
+    writeStoredActiveFlowId(roundId, activeFlowId);
+  }, [roundId, activeFlowId]);
 
   // Dirty cells awaiting save
   const dirtyRef = useRef<Map<string, { column_index: number; row_index: number; content: string; color: CellColor; comment: string }>>(new Map());
@@ -30,13 +47,15 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       const data = await api.listFlows(roundId);
       setFlows(data);
       if (data.length > 0) {
+        const stored = readStoredActiveFlowId(roundId);
         setActiveFlowId((prev) => {
-          // Keep current selection if still valid
+          if (stored && data.some((f) => f.id === stored)) return stored;
           if (prev && data.some((f) => f.id === prev)) return prev;
           return data[0].id;
         });
       } else {
         setActiveFlowId(null);
+        clearStoredActiveFlowId(roundId);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load flows');
@@ -63,6 +82,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
 
   useEffect(() => {
     if (activeFlowId) {
+      // DEB-26: clear immediately so we never show the previous tab's cells while loading
+      setCells(new Map());
       loadCells(activeFlowId);
     } else {
       setCells(new Map());
@@ -176,8 +197,9 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       });
 
       scheduleSave();
+      bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave]
+    [activeFlowId, scheduleSave, bumpCellsRevision]
   );
 
   const updateCell = useCallback(
@@ -208,8 +230,9 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       });
 
       scheduleSave();
+      bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave]
+    [activeFlowId, scheduleSave, bumpCellsRevision]
   );
 
   const updateCellColor = useCallback(
@@ -253,8 +276,9 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
         return next;
       });
       scheduleSave();
+      bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave]
+    [activeFlowId, scheduleSave, bumpCellsRevision]
   );
 
   // -- Row count per column (dynamic, only counts non-empty cells) --
@@ -272,24 +296,53 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
 
   // -- Flow tab CRUD --
   const addFlow = useCallback(
-    async (initiatedBy: 'aff' | 'neg', count: number = 1) => {
-      if (!roundId || count < 1) return;
+    async (initiatedBy: 'aff' | 'neg', count: number = 1, tabKind: FlowTabKind = 'standard'): Promise<boolean> => {
+      if (!roundId || count < 1) return false;
+      setError(null);
+      if (tabKind === 'cx') {
+        if (flows.some((f) => f.tab_kind === 'cx')) {
+          setError('Only one cross-examination (CX) tab is allowed per round.');
+          return false;
+        }
+        try {
+          const flow = await api.createFlow(roundId, {
+            position_name: 'CX',
+            initiated_by: 'aff',
+            display_order: flows.length,
+            tab_kind: 'cx',
+          });
+          setFlows((prev) => [...prev, flow]);
+          setActiveFlowId(flow.id);
+          setCells(new Map());
+          return true;
+        } catch (err) {
+          setError(api.toError(err, 'Failed to create CX tab').message);
+          return false;
+        }
+      }
       const baseOrder = flows.length;
       const existingBySide = flows.filter((f) => f.initiated_by === initiatedBy).length;
       const prefix = initiatedBy === 'aff' ? 'AFF' : 'NEG';
       const created: Awaited<ReturnType<typeof api.createFlow>>[] = [];
-      for (let i = 0; i < count; i++) {
-        const positionName = `${prefix} ${existingBySide + i + 1}`;
-        const flow = await api.createFlow(roundId, {
-          position_name: positionName,
-          initiated_by: initiatedBy,
-          display_order: baseOrder + i,
-        });
-        created.push(flow);
+      try {
+        for (let i = 0; i < count; i++) {
+          const positionName = `${prefix} ${existingBySide + i + 1}`;
+          const flow = await api.createFlow(roundId, {
+            position_name: positionName,
+            initiated_by: initiatedBy,
+            display_order: baseOrder + i,
+            tab_kind: 'standard',
+          });
+          created.push(flow);
+        }
+        setFlows((prev) => [...prev, ...created]);
+        setActiveFlowId(created[created.length - 1].id);
+        setCells(new Map());
+        return true;
+      } catch (err) {
+        setError(api.toError(err, 'Failed to create tab').message);
+        return false;
       }
-      setFlows((prev) => [...prev, ...created]);
-      setActiveFlowId(created[created.length - 1].id);
-      setCells(new Map());
     },
     [roundId, flows]
   );
@@ -307,11 +360,14 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
         if (activeFlowId === id) {
           setActiveFlowId(next.length > 0 ? next[0].id : null);
           setCells(new Map());
+          if (roundId && next.length === 0) {
+            clearStoredActiveFlowId(roundId);
+          }
         }
         return next;
       });
     },
-    [activeFlowId]
+    [activeFlowId, roundId]
   );
 
   const reorderFlows = useCallback(
@@ -343,6 +399,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     updateCellColor,
     bulkUpdateCells,
     getColumnRowCount,
+    cellsRevision,
     saveNow,
     addFlow,
     renameFlow,

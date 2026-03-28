@@ -18,7 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import Cell, { COLOR_BG, sanitizeHtml } from './Cell';
 import { Trash2, X } from 'lucide-react';
-import { SPEECH_COLUMNS, type CellColor } from '../db/types';
+import { SPEECH_COLUMNS, type CellColor, type FlowTabKind } from '../db/types';
 import type { useFlowGrid } from '../hooks/useFlowGrid';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import { shortcutFromKeyboardEvent, type MacroAction } from '../keyboardMacros';
@@ -44,10 +44,14 @@ const COLUMN_SIDES: Record<string, 'aff' | 'neg'> = {
   '1NR': 'neg', '1AR': 'aff', '2NR': 'neg', '2AR': 'aff',
 };
 
-/** Column config: label + data column index (0-7). Neg flows omit 1AC. */
-function getColumnsForFlow(initiatedBy: 'aff' | 'neg' | null): { label: string; dataCol: number }[] {
+/** Column config: label + data column index (0-7). Neg flows omit 1AC. CX uses full aff grid (DEB-28). */
+function getColumnsForFlow(
+  initiatedBy: 'aff' | 'neg' | null,
+  tabKind: FlowTabKind = 'standard'
+): { label: string; dataCol: number }[] {
+  const effective = tabKind === 'cx' ? 'aff' : initiatedBy;
   const all: { label: string; dataCol: number }[] = SPEECH_COLUMNS.map((label, i) => ({ label, dataCol: i }));
-  if (initiatedBy === 'neg') {
+  if (effective === 'neg') {
     return all.filter((c) => c.label !== '1AC');
   }
   return all;
@@ -416,35 +420,57 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
     (col: number, row: number, newContent: string) => {
       const prev = getCellContent(col, row);
       const prevColor = getCellColor(col, row);
+      const prevComment = getCellComment(col, row);
       if (newContent === prev) return;
       undoRedo.pushEdit({
         col, row,
         previousContent: prev, newContent,
         previousColor: prevColor, newColor: prevColor,
+        previousComment: prevComment, newComment: prevComment,
       });
       updateCell(col, row, newContent);
     },
-    [getCellContent, getCellColor, updateCell, undoRedo]
+    [getCellContent, getCellColor, getCellComment, updateCell, undoRedo]
   );
 
   const handleColorChange = useCallback(
     (col: number, row: number, color: CellColor) => {
       const prev = getCellColor(col, row);
       const content = getCellContent(col, row);
+      const prevComment = getCellComment(col, row);
       undoRedo.pushEdit({
         col, row,
         previousContent: content, newContent: content,
         previousColor: prev, newColor: color,
+        previousComment: prevComment, newComment: prevComment,
       });
       updateCellColor(col, row, color);
     },
-    [getCellColor, getCellContent, updateCellColor, undoRedo]
+    [getCellColor, getCellContent, getCellComment, updateCellColor, undoRedo]
+  );
+
+  const commitComment = useCallback(
+    (col: number, row: number, comment: string) => {
+      const prevComment = getCellComment(col, row);
+      if (comment === prevComment) return;
+      const content = getCellContent(col, row);
+      const color = getCellColor(col, row);
+      undoRedo.pushEdit({
+        col, row,
+        previousContent: content, newContent: content,
+        previousColor: color, newColor: color,
+        previousComment: prevComment, newComment: comment,
+      });
+      setCellComment(col, row, comment);
+    },
+    [getCellComment, getCellContent, getCellColor, setCellComment, undoRedo]
   );
 
   // Columns for current flow (aff: 8 cols, neg: 7 cols, no 1AC)
   const flowColumns = useMemo(
-    () => getColumnsForFlow(activeFlow?.initiated_by ?? null),
-    [activeFlow?.initiated_by]
+    () =>
+      getColumnsForFlow(activeFlow?.initiated_by ?? null, activeFlow?.tab_kind ?? 'standard'),
+    [activeFlow?.initiated_by, activeFlow?.tab_kind]
   );
   const dataCols = useMemo(() => flowColumns.map((c) => c.dataCol), [flowColumns]);
 
@@ -611,12 +637,18 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
       if (mod && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         const edit = undoRedo.undo();
-        if (edit) updateCell(edit.col, edit.row, edit.previousContent, edit.previousColor as CellColor);
+        if (edit) {
+          updateCell(edit.col, edit.row, edit.previousContent, edit.previousColor as CellColor);
+          setCellComment(edit.col, edit.row, edit.previousComment);
+        }
       }
       if (mod && e.key === 'z' && e.shiftKey) {
         e.preventDefault();
         const edit = undoRedo.redo();
-        if (edit) updateCell(edit.col, edit.row, edit.newContent, edit.newColor as CellColor);
+        if (edit) {
+          updateCell(edit.col, edit.row, edit.newContent, edit.newColor as CellColor);
+          setCellComment(edit.col, edit.row, edit.newComment);
+        }
       }
       if (mod && e.key === 's') {
         e.preventDefault();
@@ -641,7 +673,25 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
         return;
       }
       if (selectedCell && !isEditing) {
-        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        if ((e.key === 'Delete' || e.key === 'Backspace') && !mod) {
+          const { col, row } = selectedCell;
+          const prevContent = getCellContent(col, row);
+          const prevColor = getCellColor(col, row);
+          const prevComment = getCellComment(col, row);
+          const hasAny =
+            prevContent.trim() !== '' || prevColor !== null || prevComment.trim() !== '';
+          if (hasAny) {
+            e.preventDefault();
+            undoRedo.pushEdit({
+              col, row,
+              previousContent: prevContent, newContent: '',
+              previousColor: prevColor, newColor: null,
+              previousComment: prevComment, newComment: '',
+            });
+            updateCell(col, row, '', null);
+            setCellComment(col, row, '');
+          }
+        } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
           e.preventDefault();
           const dir = e.key.replace('Arrow', '').toLowerCase() as 'up' | 'down' | 'left' | 'right';
           navigate(selectedCell, dir);
@@ -666,7 +716,10 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [undoRedo, updateCell, grid, selectedCell, isEditing, navigate, macroActionsByShortcut, runMacro]);
+  }, [
+    undoRedo, updateCell, setCellComment, getCellContent, getCellColor, getCellComment,
+    grid, selectedCell, isEditing, navigate, macroActionsByShortcut, runMacro,
+  ]);
 
   // DnD handlers
   const handleDragStart = useCallback((e: DragStartEvent) => {
@@ -802,11 +855,11 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
           rect={contextMenu.rect}
           currentComment={getCellComment(contextMenu.col, contextMenu.row)}
           onCommentSave={(comment) => {
-            setCellComment(contextMenu.col, contextMenu.row, comment);
+            commitComment(contextMenu.col, contextMenu.row, comment);
             setContextMenu(null);
           }}
           onDelete={() => {
-            setCellComment(contextMenu.col, contextMenu.row, '');
+            commitComment(contextMenu.col, contextMenu.row, '');
             setContextMenu(null);
           }}
         />

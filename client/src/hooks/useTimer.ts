@@ -1,5 +1,54 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 
+/** Persisted slice for DEB-31 (sessionStorage, survives browser tab close in-session). */
+export interface PersistedTimerSlice {
+  secondsLeft: number;
+  totalSeconds: number;
+  running: boolean;
+  savedAt: number;
+}
+
+function readPersistedSlice(key: string): Omit<PersistedTimerSlice, 'savedAt'> & { savedAt: number } | null {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as PersistedTimerSlice;
+    if (
+      typeof p.secondsLeft !== 'number' ||
+      typeof p.totalSeconds !== 'number' ||
+      typeof p.running !== 'boolean' ||
+      typeof p.savedAt !== 'number'
+    ) {
+      return null;
+    }
+    const elapsedSec = Math.floor((Date.now() - p.savedAt) / 1000);
+    const secondsLeft = p.running ? Math.max(0, p.secondsLeft - elapsedSec) : p.secondsLeft;
+    return {
+      secondsLeft,
+      totalSeconds: p.totalSeconds,
+      running: p.running && secondsLeft > 0,
+      savedAt: p.savedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedSlice(
+  key: string,
+  slice: { secondsLeft: number; totalSeconds: number; running: boolean }
+) {
+  try {
+    const payload: PersistedTimerSlice = {
+      ...slice,
+      savedAt: Date.now(),
+    };
+    sessionStorage.setItem(key, JSON.stringify(payload));
+  } catch {
+    // quota / private mode
+  }
+}
+
 export function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -16,12 +65,45 @@ export function parseTimeInput(input: string): number {
   return Math.max(0, m * 60 + s);
 }
 
-export function useSingleTimer(initialSeconds: number) {
-  const [secondsLeft, setSecondsLeft] = useState(initialSeconds);
-  const [totalSeconds, setTotalSeconds] = useState(initialSeconds);
-  const [running, setRunning] = useState(false);
+export function useSingleTimer(
+  initialSeconds: number,
+  options?: { persistenceKey?: string | null }
+) {
+  const persistenceKey = options?.persistenceKey ?? null;
+
+  const [secondsLeft, setSecondsLeft] = useState(() => {
+    if (!persistenceKey) return initialSeconds;
+    const loaded = readPersistedSlice(persistenceKey);
+    return loaded ? loaded.secondsLeft : initialSeconds;
+  });
+  const [totalSeconds, setTotalSeconds] = useState(() => {
+    if (!persistenceKey) return initialSeconds;
+    const loaded = readPersistedSlice(persistenceKey);
+    return loaded ? loaded.totalSeconds : initialSeconds;
+  });
+  const [running, setRunning] = useState(() => {
+    if (!persistenceKey) return false;
+    const loaded = readPersistedSlice(persistenceKey);
+    return loaded ? loaded.running : false;
+  });
   const [expired, setExpired] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Re-hydrate when switching rounds / preset (key change only)
+  useEffect(() => {
+    if (!persistenceKey) return;
+    const loaded = readPersistedSlice(persistenceKey);
+    if (loaded) {
+      setSecondsLeft(loaded.secondsLeft);
+      setTotalSeconds(loaded.totalSeconds);
+      setExpired(loaded.secondsLeft <= 0 && !loaded.running);
+      setRunning(loaded.running && loaded.secondsLeft > 0);
+    } else {
+      setSecondsLeft(initialSeconds);
+      setTotalSeconds(initialSeconds);
+      setRunning(false);
+      setExpired(false);
+    }
+  }, [persistenceKey, initialSeconds]);
 
   const playBeep = useCallback(() => {
     try {
@@ -39,32 +121,46 @@ export function useSingleTimer(initialSeconds: number) {
     }
   }, []);
 
+  // One interval while running (DEB-31: survives remount via persisted running + this effect)
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => {
+      setSecondsLeft((prev) => {
+        if (prev <= 1) {
+          setRunning(false);
+          setExpired(true);
+          playBeep();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [running, playBeep]);
+
   const stop = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
     setRunning(false);
   }, []);
-
-  const tick = useCallback(() => {
-    setSecondsLeft((prev) => {
-      if (prev <= 1) {
-        stop();
-        setExpired(true);
-        playBeep();
-        return 0;
-      }
-      return prev - 1;
-    });
-  }, [stop, playBeep]);
 
   const start = useCallback(() => {
     if (secondsLeft <= 0 || running) return;
     setExpired(false);
     setRunning(true);
-    intervalRef.current = setInterval(tick, 1000);
-  }, [secondsLeft, running, tick]);
+  }, [secondsLeft, running]);
+
+  // Persist to sessionStorage
+  const persistThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!persistenceKey) return;
+    const persist = () => {
+      writePersistedSlice(persistenceKey, { secondsLeft, totalSeconds, running });
+    };
+    if (persistThrottleRef.current) clearTimeout(persistThrottleRef.current);
+    persistThrottleRef.current = setTimeout(persist, running ? 400 : 0);
+    return () => {
+      if (persistThrottleRef.current) clearTimeout(persistThrottleRef.current);
+    };
+  }, [persistenceKey, secondsLeft, totalSeconds, running]);
 
   const pause = useCallback(() => {
     stop();
@@ -83,12 +179,6 @@ export function useSingleTimer(initialSeconds: number) {
     setSecondsLeft(secs);
     setExpired(false);
   }, [stop]);
-
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
 
   return {
     secondsLeft,

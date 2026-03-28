@@ -11,7 +11,14 @@ export default function HomePage() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  const handleCreate = async (data: { name: string; date: string | null; location: string | null; tournament_type: 'judge' | 'competitor'; team_name?: string | null }) => {
+  const handleCreate = async (data: {
+    name: string;
+    date: string | null;
+    location: string | null;
+    tournament_type: 'judge' | 'competitor';
+    team_name?: string | null;
+    timer_preset: 'college' | 'high_school';
+  }) => {
     try {
       const t = await create(data);
       setShowForm(false);

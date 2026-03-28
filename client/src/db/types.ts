@@ -1,6 +1,8 @@
 import type { KeyboardMacro } from '../keyboardMacros';
 
 export type TournamentType = 'judge' | 'competitor';
+/** College vs high school speech lengths (DEB-29). */
+export type TimerPreset = 'college' | 'high_school';
 export type UserRole = 'Admin' | 'User';
 
 export interface Profile {
@@ -44,6 +46,7 @@ export interface Tournament {
   location: string | null;
   tournament_type?: TournamentType;
   team_name?: string | null;
+  timer_preset?: TimerPreset;
   created_at: string;
   updated_at: string;
 }
@@ -101,12 +104,16 @@ export function formatRoundName(r: Round, teamName?: string | null): string {
   return getRoundLabel(r.round_number);
 }
 
+export type FlowTabKind = 'standard' | 'cx';
+
 export interface Flow {
   id: string;
   user_id: string;
   round_id: string;
   position_name: string;
   initiated_by: 'aff' | 'neg';
+  /** CX = cross-examination sheet; at most one per round (DEB-28). */
+  tab_kind?: FlowTabKind;
   display_order: number;
   created_at: string;
   updated_at: string;

@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { rpcMock, getUserMock } = vi.hoisted(() => ({
-  rpcMock: vi.fn(),
-  getUserMock: vi.fn(),
-}));
+const rpcMock = vi.fn();
+const getUserMock = vi.fn();
 
 vi.mock('./supabase', () => ({
   supabase: {
@@ -14,7 +12,22 @@ vi.mock('./supabase', () => ({
   },
 }));
 
-import { listAdminUserSummaries } from './api';
+import { listAdminUserSummaries, toError } from './api';
+
+describe('toError', () => {
+  test('returns Error instances unchanged', () => {
+    const e = new Error('x');
+    expect(toError(e, 'fallback')).toBe(e);
+  });
+
+  test('uses message from object-like errors', () => {
+    expect(toError({ message: 'm' }, 'fallback').message).toBe('m');
+  });
+
+  test('uses fallback for unknown shapes', () => {
+    expect(toError(null, 'fallback').message).toBe('fallback');
+  });
+});
 
 describe('listAdminUserSummaries', () => {
   beforeEach(() => {

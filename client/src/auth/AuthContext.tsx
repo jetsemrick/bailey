@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../db/supabase';
 import * as api from '../db/api';
@@ -27,6 +35,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  /** After first successful sync with a user; used to skip redundant auth overlays (e.g. tab visibility SIGNED_IN). */
+  const initialSyncDoneRef = useRef(false);
+  const sessionUserIdRef = useRef<string | null>(null);
 
   const loadProfile = useCallback(async (nextUser: User | null) => {
     if (!nextUser) {
@@ -52,10 +63,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
 
-    const syncSession = async (nextSession: Session | null) => {
+    const syncSession = async (nextSession: Session | null, source: string) => {
       if (!active) return;
 
-      setLoading(true);
+      const nextUserId = nextSession?.user?.id ?? null;
+      const isDuplicateSessionRefresh =
+        initialSyncDoneRef.current &&
+        nextUserId !== null &&
+        sessionUserIdRef.current === nextUserId;
+      const skipLoadingOverlay =
+        isDuplicateSessionRefresh &&
+        (source === 'onAuthStateChange:SIGNED_IN' ||
+          source === 'onAuthStateChange:TOKEN_REFRESHED' ||
+          source === 'onAuthStateChange:INITIAL_SESSION');
+
+      if (!skipLoadingOverlay) {
+        setLoading(true);
+      }
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
 
@@ -68,21 +92,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } finally {
         if (active) {
-          setLoading(false);
+          if (!skipLoadingOverlay) {
+            setLoading(false);
+          }
+          if (nextUserId !== null) {
+            initialSyncDoneRef.current = true;
+          } else {
+            initialSyncDoneRef.current = false;
+          }
+          sessionUserIdRef.current = nextUserId;
         }
       }
     };
 
     // Get initial session
     supabase.auth.getSession().then(({ data: { session: s } }) => {
-      void syncSession(s);
+      void syncSession(s, 'getSession');
     });
 
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, s) => {
-      void syncSession(s);
+    } = supabase.auth.onAuthStateChange((event, s) => {
+      void syncSession(s, `onAuthStateChange:${event}`);
     });
 
     return () => {

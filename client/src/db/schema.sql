@@ -55,6 +55,7 @@ CREATE TABLE tournaments (
   location text,
   tournament_type text CHECK (tournament_type IN ('judge', 'competitor')) DEFAULT 'competitor',
   team_name text,
+  timer_preset text CHECK (timer_preset IN ('college', 'high_school')) DEFAULT 'high_school',
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
@@ -80,10 +81,33 @@ CREATE TABLE flow_tabs (
   round_id uuid REFERENCES rounds(id) ON DELETE CASCADE NOT NULL,
   position_name text NOT NULL DEFAULT 'Untitled',
   initiated_by text CHECK (initiated_by IN ('aff', 'neg')) DEFAULT 'aff',
+  tab_kind text CHECK (tab_kind IN ('standard', 'cx')) DEFAULT 'standard',
   display_order integer DEFAULT 0,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS flow_tabs_one_cx_per_round
+  ON flow_tabs (round_id)
+  WHERE tab_kind = 'cx';
+
+-- CX tabs: set tab_kind in DB when position_name is CX (client omits tab_kind for PostgREST compatibility).
+CREATE OR REPLACE FUNCTION public.flow_tabs_set_cx_from_position()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.position_name = 'CX' THEN
+    NEW.tab_kind := 'cx';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER flow_tabs_cx_from_position
+  BEFORE INSERT ON flow_tabs
+  FOR EACH ROW
+  EXECUTE FUNCTION public.flow_tabs_set_cx_from_position();
 
 CREATE TABLE flow_cells (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
