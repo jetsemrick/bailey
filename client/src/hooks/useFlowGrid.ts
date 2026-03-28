@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Flow, FlowCell, CellColor, FlowTabKind, Round } from '../db/types';
 import * as api from '../db/api';
+import {
+  clearStoredActiveFlowId,
+  readStoredActiveFlowId,
+  writeStoredActiveFlowId,
+} from '../lib/roundFlowTabStorage';
 
 const DEBOUNCE_MS = 500;
 
@@ -16,6 +21,12 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const bumpCellsRevision = useCallback(() => {
     setCellsRevision((r) => r + 1);
   }, []);
+
+  // Remember active flow tab per round (browser tab reload / restore)
+  useEffect(() => {
+    if (!roundId || !activeFlowId) return;
+    writeStoredActiveFlowId(roundId, activeFlowId);
+  }, [roundId, activeFlowId]);
 
   // Dirty cells awaiting save
   const dirtyRef = useRef<Map<string, { column_index: number; row_index: number; content: string; color: CellColor; comment: string }>>(new Map());
@@ -36,13 +47,15 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       const data = await api.listFlows(roundId);
       setFlows(data);
       if (data.length > 0) {
+        const stored = readStoredActiveFlowId(roundId);
         setActiveFlowId((prev) => {
-          // Keep current selection if still valid
+          if (stored && data.some((f) => f.id === stored)) return stored;
           if (prev && data.some((f) => f.id === prev)) return prev;
           return data[0].id;
         });
       } else {
         setActiveFlowId(null);
+        clearStoredActiveFlowId(roundId);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load flows');
@@ -347,11 +360,14 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
         if (activeFlowId === id) {
           setActiveFlowId(next.length > 0 ? next[0].id : null);
           setCells(new Map());
+          if (roundId && next.length === 0) {
+            clearStoredActiveFlowId(roundId);
+          }
         }
         return next;
       });
     },
-    [activeFlowId]
+    [activeFlowId, roundId]
   );
 
   const reorderFlows = useCallback(
