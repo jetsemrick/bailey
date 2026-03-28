@@ -6,9 +6,11 @@ import Cell from './Cell';
 interface DecisionViewProps {
   flows: Flow[];
   roundId: string;
+  /** Bumps when flow grid cells change anywhere (DEB-27). */
+  cellsRevision: number;
 }
 
-export default function DecisionView({ flows }: DecisionViewProps) {
+export default function DecisionView({ flows, cellsRevision }: DecisionViewProps) {
   const [visibleFlowIds, setVisibleFlowIds] = useState<Set<string>>(new Set());
   const [cellsByFlow, setCellsByFlow] = useState<Map<string, Map<string, FlowCell>>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -67,7 +69,7 @@ export default function DecisionView({ flows }: DecisionViewProps) {
 
     fetchData();
     return () => { mounted = false; };
-  }, [flows]);
+  }, [flows, cellsRevision]);
 
   const toggleFlow = (id: string) => {
     setVisibleFlowIds((prev) => {

@@ -165,7 +165,7 @@ function RoundPageInner() {
             <div className="flex flex-1 overflow-hidden min-h-0">
               <div className="flex flex-col flex-1 min-w-0 border-r border-card-04">
                 {rebuttalFocus ? (
-                  <DecisionView flows={grid.flows} roundId={id} />
+                  <DecisionView flows={grid.flows} roundId={id} cellsRevision={grid.cellsRevision} />
                 ) : (
                   <FlowGrid grid={grid} defaultScrollToEnd />
                 )}

@@ -8,8 +8,14 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const [flows, setFlows] = useState<Flow[]>([]);
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [cells, setCells] = useState<Map<string, FlowCell>>(new Map());
+  /** Increments when any flow cells change (DEB-27: DecisionView refetch). */
+  const [cellsRevision, setCellsRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const bumpCellsRevision = useCallback(() => {
+    setCellsRevision((r) => r + 1);
+  }, []);
 
   // Dirty cells awaiting save
   const dirtyRef = useRef<Map<string, { column_index: number; row_index: number; content: string; color: CellColor; comment: string }>>(new Map());
@@ -176,8 +182,9 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       });
 
       scheduleSave();
+      bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave]
+    [activeFlowId, scheduleSave, bumpCellsRevision]
   );
 
   const updateCell = useCallback(
@@ -208,8 +215,9 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       });
 
       scheduleSave();
+      bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave]
+    [activeFlowId, scheduleSave, bumpCellsRevision]
   );
 
   const updateCellColor = useCallback(
@@ -253,8 +261,9 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
         return next;
       });
       scheduleSave();
+      bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave]
+    [activeFlowId, scheduleSave, bumpCellsRevision]
   );
 
   // -- Row count per column (dynamic, only counts non-empty cells) --
@@ -343,6 +352,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     updateCellColor,
     bulkUpdateCells,
     getColumnRowCount,
+    cellsRevision,
     saveNow,
     addFlow,
     renameFlow,
