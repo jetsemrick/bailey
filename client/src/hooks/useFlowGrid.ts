@@ -69,6 +69,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
 
   useEffect(() => {
     if (activeFlowId) {
+      // DEB-26: clear immediately so we never show the previous tab's cells while loading
+      setCells(new Map());
       loadCells(activeFlowId);
     } else {
       setCells(new Map());
