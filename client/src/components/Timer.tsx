@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useSingleTimer, formatTime, parseTimeInput } from '../hooks/useTimer';
 import { useRoundTimerOptional } from '../contexts/RoundTimerContext';
 import {
@@ -79,30 +80,55 @@ function TimerUnit({
   );
 }
 
+function speechPhaseStorageKey(base: string | null): string | null {
+  return base ? `${base}:speechPhase` : null;
+}
+
 export default function Timer() {
+  const location = useLocation();
+  const roundId = location.pathname.match(/^\/round\/([^/]+)/)?.[1] ?? null;
   const optional = useRoundTimerOptional();
   const timerPreset = optional?.timerPreset ?? 'high_school';
 
-  const affPrep = useSingleTimer(PREP_SECONDS);
-  const negPrep = useSingleTimer(PREP_SECONDS);
-  const speech = useSingleTimer(speechConstructiveSeconds(timerPreset));
+  const storageBase = roundId ? `bailey-debate-timer:${roundId}:${timerPreset}` : null;
 
   const [speechPhase, setSpeechPhase] = useState<'constructive' | 'rebuttal'>('constructive');
 
   useEffect(() => {
-    affPrep.setTime(PREP_SECONDS);
-    negPrep.setTime(PREP_SECONDS);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- timer methods stable; avoid loop on object identity
-  }, [timerPreset]);
+    const sk = speechPhaseStorageKey(storageBase);
+    if (!sk) return;
+    try {
+      const v = sessionStorage.getItem(sk);
+      setSpeechPhase(v === 'rebuttal' ? 'rebuttal' : 'constructive');
+    } catch {
+      /* ignore */
+    }
+  }, [storageBase]);
 
   useEffect(() => {
-    const total =
-      speechPhase === 'constructive'
-        ? speechConstructiveSeconds(timerPreset)
-        : speechRebuttalSeconds(timerPreset);
-    speech.setTime(total);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timerPreset, speechPhase]);
+    const sk = speechPhaseStorageKey(storageBase);
+    if (!sk) return;
+    try {
+      sessionStorage.setItem(sk, speechPhase);
+    } catch {
+      /* ignore */
+    }
+  }, [storageBase, speechPhase]);
+
+  const affPrep = useSingleTimer(PREP_SECONDS, {
+    persistenceKey: storageBase ? `${storageBase}:affPrep` : null,
+  });
+  const negPrep = useSingleTimer(PREP_SECONDS, {
+    persistenceKey: storageBase ? `${storageBase}:negPrep` : null,
+  });
+
+  const speechInitial =
+    speechPhase === 'constructive'
+      ? speechConstructiveSeconds(timerPreset)
+      : speechRebuttalSeconds(timerPreset);
+  const speech = useSingleTimer(speechInitial, {
+    persistenceKey: storageBase ? `${storageBase}:speech:${speechPhase}` : null,
+  });
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
