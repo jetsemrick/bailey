@@ -20,6 +20,7 @@ export default function DecisionView({
 }: DecisionViewProps) {
   const [cellsByFlow, setCellsByFlow] = useState<Map<string, Map<string, FlowCell>>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(0);
 
@@ -39,11 +40,15 @@ export default function DecisionView({
     let mounted = true;
     const fetchData = async () => {
       if (flows.length === 0) {
+        setError(null);
+        setCellsByFlow(new Map());
         setLoading(false);
         return;
       }
       
       try {
+        setError(null);
+        setLoading(true);
         const newCellsMap = new Map<string, Map<string, FlowCell>>();
         await Promise.all(
           flows.map(async (f) => {
@@ -59,8 +64,10 @@ export default function DecisionView({
           setLoading(false);
         }
       } catch (err) {
-        console.error('Failed to load decision view cells', err);
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'Failed to load decision view cells');
+          setLoading(false);
+        }
       }
     };
 
@@ -81,6 +88,14 @@ export default function DecisionView({
     return (
       <div className="flex-1 flex items-center justify-center text-foreground/40 text-sm">
         Loading decision view...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-red-500 text-sm px-6 text-center">
+        Failed to load decision view: {error}
       </div>
     );
   }
