@@ -17,6 +17,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const [cellsRevision, setCellsRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const cellsLoadRequestRef = useRef(0);
 
   const bumpCellsRevision = useCallback(() => {
     setCellsRevision((r) => r + 1);
@@ -70,12 +71,15 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
 
   // -- Load cells when active flow changes --
   const loadCells = useCallback(async (flowId: string) => {
+    const requestId = ++cellsLoadRequestRef.current;
     try {
       const data = await api.listCells(flowId);
+      if (requestId !== cellsLoadRequestRef.current) return;
       const map = new Map<string, FlowCell>();
       data.forEach((c) => map.set(`${c.column_index}:${c.row_index}`, c));
       setCells(map);
     } catch (err) {
+      if (requestId !== cellsLoadRequestRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to load cells');
     }
   }, []);
@@ -86,6 +90,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       setCells(new Map());
       loadCells(activeFlowId);
     } else {
+      cellsLoadRequestRef.current++;
       setCells(new Map());
     }
   }, [activeFlowId, loadCells]);

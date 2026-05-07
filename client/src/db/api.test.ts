@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const rpcMock = vi.fn();
-const getUserMock = vi.fn();
+const { getUserMock, rpcMock } = vi.hoisted(() => ({
+  getUserMock: vi.fn(),
+  rpcMock: vi.fn(),
+}));
 
 vi.mock('./supabase', () => ({
   supabase: {
