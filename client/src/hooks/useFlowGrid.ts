@@ -42,6 +42,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const cellsLoadRequestRef = useRef(0);
+  const reorderRequestRef = useRef(0);
 
   const bumpCellsRevision = useCallback(() => {
     setCellsRevision((r) => r + 1);
@@ -101,6 +102,23 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       if (requestId !== cellsLoadRequestRef.current) return;
       const map = new Map<string, FlowCell>();
       data.forEach((c) => map.set(`${c.column_index}:${c.row_index}`, c));
+      for (const cell of dirtyRef.current.values()) {
+        if (cell.flow_id !== flowId) continue;
+        const key = `${cell.column_index}:${cell.row_index}`;
+        const existing = map.get(key);
+        map.set(key, {
+          id: existing?.id ?? '',
+          user_id: existing?.user_id ?? '',
+          flow_id: flowId,
+          column_index: cell.column_index,
+          row_index: cell.row_index,
+          content: cell.content,
+          color: cell.color,
+          comment: cell.comment,
+          created_at: existing?.created_at ?? new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
       setCells(map);
     } catch (err) {
       if (requestId !== cellsLoadRequestRef.current) return;
@@ -419,14 +437,17 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
 
   const reorderFlows = useCallback(
     async (reordered: Flow[]) => {
+      const requestId = ++reorderRequestRef.current;
       const previous = flows;
       setFlows(reordered);
       const updates = reordered.map((f, i) => ({ id: f.id, display_order: i }));
       try {
         await api.reorderFlows(updates);
       } catch (err) {
-        setFlows(previous);
-        setError(err instanceof Error ? err.message : 'Failed to reorder tabs');
+        if (requestId === reorderRequestRef.current) {
+          setFlows(previous);
+          setError(err instanceof Error ? err.message : 'Failed to reorder tabs');
+        }
       }
     },
     [flows]

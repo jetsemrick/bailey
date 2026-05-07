@@ -62,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setProfile(null);
-    setProfileError(null);
+    setProfileError('Failed to load profile');
   }, []);
 
   useEffect(() => {

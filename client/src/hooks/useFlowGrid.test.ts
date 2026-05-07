@@ -241,6 +241,30 @@ describe('useFlowGrid', () => {
     ]);
   });
 
+  test('overlays unsaved dirty cells after returning to a tab', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    apiMock.upsertCells.mockRejectedValue(new Error('offline'));
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+    grid.updateCell(0, 0, 'unsaved draft', 'green');
+    grid = renderHook();
+    await grid.saveNow();
+    grid = await flushAndRender();
+
+    grid.selectFlow('flow-b');
+    grid = await flushAndRender();
+    expect(grid.activeFlowId).toBe('flow-b');
+
+    grid.selectFlow('flow-a');
+    grid = await flushAndRender();
+    grid = await flushAndRender();
+
+    expect(grid.activeFlowId).toBe('flow-a');
+    expect(grid.getCellContent(0, 0)).toBe('unsaved draft');
+    expect(grid.getCellColor(0, 0)).toBe('green');
+  });
+
   test('rolls back flow order when reorder persistence fails', async () => {
     apiMock.listCells.mockResolvedValue([]);
     apiMock.reorderFlows.mockRejectedValueOnce(new Error('reorder failed'));
@@ -258,5 +282,33 @@ describe('useFlowGrid', () => {
     ]);
     expect(grid.flows.map((flow) => flow.id)).toEqual(['flow-a', 'flow-b']);
     expect(grid.error).toBe('reorder failed');
+  });
+
+  test('does not let an older reorder failure roll back a newer order', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    const firstReorder = deferred<void>();
+    const secondReorder = deferred<void>();
+    apiMock.reorderFlows
+      .mockReturnValueOnce(firstReorder.promise)
+      .mockReturnValueOnce(secondReorder.promise);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    void grid.reorderFlows([makeFlow('flow-b'), makeFlow('flow-a')]);
+    grid = renderHook();
+    expect(grid.flows.map((flow) => flow.id)).toEqual(['flow-b', 'flow-a']);
+
+    void grid.reorderFlows([makeFlow('flow-a'), makeFlow('flow-b')]);
+    grid = renderHook();
+    expect(grid.flows.map((flow) => flow.id)).toEqual(['flow-a', 'flow-b']);
+
+    secondReorder.resolve();
+    await flushAndRender();
+    firstReorder.reject(new Error('older request failed'));
+    grid = await flushAndRender();
+
+    expect(grid.flows.map((flow) => flow.id)).toEqual(['flow-a', 'flow-b']);
+    expect(grid.error).toBe(null);
   });
 });

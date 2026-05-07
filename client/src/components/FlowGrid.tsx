@@ -638,7 +638,8 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
       const isTypingTarget =
         target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
       const canUseGridHistory = !isTypingTarget && !isEditing;
-      if (canUseGridHistory && mod && e.key === 'z' && !e.shiftKey) {
+      const key = e.key.toLowerCase();
+      if (canUseGridHistory && mod && key === 'z' && !e.shiftKey) {
         e.preventDefault();
         const edit = undoRedo.undo();
         if (edit) {
@@ -646,7 +647,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
           setCellComment(edit.col, edit.row, edit.previousComment);
         }
       }
-      if (canUseGridHistory && mod && e.key === 'z' && e.shiftKey) {
+      if (canUseGridHistory && mod && key === 'z' && e.shiftKey) {
         e.preventDefault();
         const edit = undoRedo.redo();
         if (edit) {
