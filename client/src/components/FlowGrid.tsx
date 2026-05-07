@@ -634,7 +634,11 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key === 'z' && !e.shiftKey) {
+      const target = e.target as HTMLElement;
+      const isTypingTarget =
+        target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      const canUseGridHistory = !isTypingTarget && !isEditing;
+      if (canUseGridHistory && mod && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         const edit = undoRedo.undo();
         if (edit) {
@@ -642,7 +646,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
           setCellComment(edit.col, edit.row, edit.previousComment);
         }
       }
-      if (mod && e.key === 'z' && e.shiftKey) {
+      if (canUseGridHistory && mod && e.key === 'z' && e.shiftKey) {
         e.preventDefault();
         const edit = undoRedo.redo();
         if (edit) {
@@ -657,9 +661,6 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
       const shortcut = shortcutFromKeyboardEvent(e);
       if (shortcut) {
         const actions = macroActionsByShortcut.get(shortcut);
-        const target = e.target as HTMLElement;
-        const isTypingTarget =
-          target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
         if (actions && actions.length > 0 && !isTypingTarget && !isEditing) {
           e.preventDefault();
           runMacro(actions);
@@ -668,7 +669,6 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
       }
       // Arrow key navigation when cell is selected but not editing
       // Skip if user is focused on an input/textarea element elsewhere on the page
-      const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || (target.isContentEditable && !containerRef.current?.contains(target))) {
         return;
       }
