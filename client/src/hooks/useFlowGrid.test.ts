@@ -98,6 +98,7 @@ const apiMock = vi.hoisted(() => ({
   listFlows: vi.fn(),
   listCells: vi.fn(),
   upsertCells: vi.fn(),
+  reorderFlows: vi.fn(),
 }));
 
 vi.mock('react', () => hookHarness.react);
@@ -178,6 +179,7 @@ describe('useFlowGrid', () => {
     });
     apiMock.listFlows.mockResolvedValue([makeFlow('flow-a'), makeFlow('flow-b')]);
     apiMock.upsertCells.mockResolvedValue(undefined);
+    apiMock.reorderFlows.mockResolvedValue(undefined);
   });
 
   test('ignores stale cells when tab loads resolve out of order', async () => {
@@ -237,5 +239,24 @@ describe('useFlowGrid', () => {
         comment: '',
       },
     ]);
+  });
+
+  test('rolls back flow order when reorder persistence fails', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    apiMock.reorderFlows.mockRejectedValueOnce(new Error('reorder failed'));
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+    expect(grid.flows.map((flow) => flow.id)).toEqual(['flow-a', 'flow-b']);
+
+    await grid.reorderFlows([makeFlow('flow-b'), makeFlow('flow-a')]);
+    grid = await flushAndRender();
+
+    expect(apiMock.reorderFlows).toHaveBeenCalledWith([
+      { id: 'flow-b', display_order: 0 },
+      { id: 'flow-a', display_order: 1 },
+    ]);
+    expect(grid.flows.map((flow) => flow.id)).toEqual(['flow-a', 'flow-b']);
+    expect(grid.error).toBe('reorder failed');
   });
 });
