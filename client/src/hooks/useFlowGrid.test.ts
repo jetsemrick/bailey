@@ -207,4 +207,35 @@ describe('useFlowGrid', () => {
     expect(grid.activeFlowId).toBe('flow-b');
     expect(grid.getCellContent(0, 0)).toBe('latest tab cell');
   });
+
+  test('keeps dirty cells retryable when a save fails', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    apiMock.upsertCells.mockRejectedValueOnce(new Error('offline'));
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+    expect(grid.activeFlowId).toBe('flow-a');
+
+    grid.updateCell(0, 0, 'draft text', 'yellow');
+    grid = renderHook();
+    await grid.saveNow();
+    grid = await flushAndRender();
+
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+    expect(grid.error).toBe('offline');
+
+    apiMock.upsertCells.mockResolvedValueOnce(undefined);
+    await grid.saveNow();
+
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(2);
+    expect(apiMock.upsertCells).toHaveBeenNthCalledWith(2, 'flow-a', [
+      {
+        column_index: 0,
+        row_index: 0,
+        content: 'draft text',
+        color: 'yellow',
+        comment: '',
+      },
+    ]);
+  });
 });
