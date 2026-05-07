@@ -17,6 +17,7 @@ interface AuthState {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
+  profileError: string | null;
   role: UserRole | null;
   isAdmin: boolean;
   loading: boolean;
@@ -34,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   /** After first successful sync with a user; used to skip redundant auth overlays (e.g. tab visibility SIGNED_IN). */
   const initialSyncDoneRef = useRef(false);
@@ -42,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadProfile = useCallback(async (nextUser: User | null) => {
     if (!nextUser) {
       setProfile(null);
+      setProfileError(null);
       return;
     }
 
@@ -53,11 +56,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const nextProfile = await api.getCurrentProfile();
       if (nextProfile) {
         setProfile(nextProfile);
+        setProfileError(null);
         return;
       }
     }
 
     setProfile(null);
+    setProfileError(null);
   }, []);
 
   useEffect(() => {
@@ -89,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('Failed to load profile:', error);
         if (active) {
           setProfile(null);
+          setProfileError(error instanceof Error ? error.message : 'Failed to load profile');
         }
       } finally {
         if (active) {
@@ -174,6 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         session,
         profile,
+        profileError,
         role,
         isAdmin,
         loading,
