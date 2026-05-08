@@ -41,6 +41,8 @@ export default function HomePage() {
       setDeleteTarget(null);
     } catch (err) {
       console.error('Failed to delete tournament:', err);
+      const msg = (err as { message?: string })?.message ?? (err instanceof Error ? err.message : 'Failed to delete tournament');
+      alert(msg);
     }
   };
 

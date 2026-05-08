@@ -98,6 +98,7 @@ const apiMock = vi.hoisted(() => ({
   listFlows: vi.fn(),
   listCells: vi.fn(),
   upsertCells: vi.fn(),
+  reorderFlows: vi.fn(),
 }));
 
 vi.mock('react', () => hookHarness.react);
@@ -178,6 +179,7 @@ describe('useFlowGrid', () => {
     });
     apiMock.listFlows.mockResolvedValue([makeFlow('flow-a'), makeFlow('flow-b')]);
     apiMock.upsertCells.mockResolvedValue(undefined);
+    apiMock.reorderFlows.mockResolvedValue(undefined);
   });
 
   test('ignores stale cells when tab loads resolve out of order', async () => {
@@ -206,5 +208,107 @@ describe('useFlowGrid', () => {
     grid = await flushAndRender();
     expect(grid.activeFlowId).toBe('flow-b');
     expect(grid.getCellContent(0, 0)).toBe('latest tab cell');
+  });
+
+  test('keeps dirty cells retryable when a save fails', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    apiMock.upsertCells.mockRejectedValueOnce(new Error('offline'));
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+    expect(grid.activeFlowId).toBe('flow-a');
+
+    grid.updateCell(0, 0, 'draft text', 'yellow');
+    grid = renderHook();
+    await grid.saveNow();
+    grid = await flushAndRender();
+
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+    expect(grid.error).toBe('offline');
+
+    apiMock.upsertCells.mockResolvedValueOnce(undefined);
+    await grid.saveNow();
+
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(2);
+    expect(apiMock.upsertCells).toHaveBeenNthCalledWith(2, 'flow-a', [
+      {
+        column_index: 0,
+        row_index: 0,
+        content: 'draft text',
+        color: 'yellow',
+        comment: '',
+      },
+    ]);
+  });
+
+  test('overlays unsaved dirty cells after returning to a tab', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    apiMock.upsertCells.mockRejectedValue(new Error('offline'));
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+    grid.updateCell(0, 0, 'unsaved draft', 'green');
+    grid = renderHook();
+    await grid.saveNow();
+    grid = await flushAndRender();
+
+    grid.selectFlow('flow-b');
+    grid = await flushAndRender();
+    expect(grid.activeFlowId).toBe('flow-b');
+
+    grid.selectFlow('flow-a');
+    grid = await flushAndRender();
+    grid = await flushAndRender();
+
+    expect(grid.activeFlowId).toBe('flow-a');
+    expect(grid.getCellContent(0, 0)).toBe('unsaved draft');
+    expect(grid.getCellColor(0, 0)).toBe('green');
+  });
+
+  test('rolls back flow order when reorder persistence fails', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    apiMock.reorderFlows.mockRejectedValueOnce(new Error('reorder failed'));
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+    expect(grid.flows.map((flow) => flow.id)).toEqual(['flow-a', 'flow-b']);
+
+    await grid.reorderFlows([makeFlow('flow-b'), makeFlow('flow-a')]);
+    grid = await flushAndRender();
+
+    expect(apiMock.reorderFlows).toHaveBeenCalledWith([
+      { id: 'flow-b', display_order: 0 },
+      { id: 'flow-a', display_order: 1 },
+    ]);
+    expect(grid.flows.map((flow) => flow.id)).toEqual(['flow-a', 'flow-b']);
+    expect(grid.error).toBe('reorder failed');
+  });
+
+  test('does not let an older reorder failure roll back a newer order', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    const firstReorder = deferred<void>();
+    const secondReorder = deferred<void>();
+    apiMock.reorderFlows
+      .mockReturnValueOnce(firstReorder.promise)
+      .mockReturnValueOnce(secondReorder.promise);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    void grid.reorderFlows([makeFlow('flow-b'), makeFlow('flow-a')]);
+    grid = renderHook();
+    expect(grid.flows.map((flow) => flow.id)).toEqual(['flow-b', 'flow-a']);
+
+    void grid.reorderFlows([makeFlow('flow-a'), makeFlow('flow-b')]);
+    grid = renderHook();
+    expect(grid.flows.map((flow) => flow.id)).toEqual(['flow-a', 'flow-b']);
+
+    secondReorder.resolve();
+    await flushAndRender();
+    firstReorder.reject(new Error('older request failed'));
+    grid = await flushAndRender();
+
+    expect(grid.flows.map((flow) => flow.id)).toEqual(['flow-a', 'flow-b']);
+    expect(grid.error).toBe(null);
   });
 });

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Sidebar from '../components/Sidebar';
@@ -14,6 +14,16 @@ import { normalizeTimerPreset } from '../lib/timerPreset';
 import * as api from '../db/api';
 import type { FlowTabKind, Round, Tournament } from '../db/types';
 import { formatRoundName } from '../db/types';
+
+function isNotFoundError(error: unknown) {
+  if (!error || typeof error !== 'object') return false;
+  const maybeError = error as { code?: unknown; status?: unknown };
+  return maybeError.code === 'PGRST116' || maybeError.status === 404;
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
 
 export default function RoundPage() {
   return (
@@ -32,6 +42,7 @@ function RoundPageInner() {
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const grid = useFlowGrid(id, round);
   const [loadingMeta, setLoadingMeta] = useState(true);
+  const [metaError, setMetaError] = useState<string | null>(null);
   const [showNewFlow, setShowNewFlow] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [viewMode, setViewMode] = useState<'flow' | 'analytics' | 'split'>('flow');
@@ -68,18 +79,31 @@ function RoundPageInner() {
     });
   }, [grid.flows]);
 
-  useEffect(() => {
+  const loadMeta = useCallback(async () => {
     if (!id) return;
     setLoadingMeta(true);
-    api.getRound(id)
-      .then(async (r) => {
-        setRound(r);
-        const t = await api.getTournament(r.tournament_id);
-        setTournament(t);
-      })
-      .catch(() => navigate('/'))
-      .finally(() => setLoadingMeta(false));
+    setMetaError(null);
+    try {
+      const r = await api.getRound(id);
+      setRound(r);
+      const t = await api.getTournament(r.tournament_id);
+      setTournament(t);
+    } catch (err) {
+      if (isNotFoundError(err)) {
+        navigate('/');
+        return;
+      }
+      setRound(null);
+      setTournament(null);
+      setMetaError(errorMessage(err, 'Failed to load round'));
+    } finally {
+      setLoadingMeta(false);
+    }
   }, [id, navigate]);
+
+  useEffect(() => {
+    void loadMeta();
+  }, [loadMeta]);
 
   useEffect(() => {
     if (tournament) {
@@ -111,6 +135,23 @@ function RoundPageInner() {
     return (
       <Layout>
         <div className="flex-1 flex items-center justify-center text-foreground/40 text-sm">Loading...</div>
+      </Layout>
+    );
+  }
+
+  if (metaError) {
+    return (
+      <Layout>
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-sm text-foreground/70 px-6 text-center">
+          <div>Failed to load round: {metaError}</div>
+          <button
+            type="button"
+            onClick={() => void loadMeta()}
+            className="px-3 py-1.5 rounded bg-accent text-white hover:bg-accent/90 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
       </Layout>
     );
   }

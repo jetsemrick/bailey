@@ -9,6 +9,30 @@ import {
 
 const DEBOUNCE_MS = 500;
 
+type DirtyCell = {
+  flow_id: string;
+  column_index: number;
+  row_index: number;
+  content: string;
+  color: CellColor;
+  comment: string;
+};
+
+function dirtyCellKey(flowId: string, col: number, row: number) {
+  return `${flowId}:${col}:${row}`;
+}
+
+function sameDirtyCell(a: DirtyCell, b: DirtyCell) {
+  return (
+    a.flow_id === b.flow_id &&
+    a.column_index === b.column_index &&
+    a.row_index === b.row_index &&
+    a.content === b.content &&
+    a.color === b.color &&
+    a.comment === b.comment
+  );
+}
+
 export function useFlowGrid(roundId: string | undefined, _round?: Round | null) {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
@@ -18,6 +42,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const cellsLoadRequestRef = useRef(0);
+  const reorderRequestRef = useRef(0);
 
   const bumpCellsRevision = useCallback(() => {
     setCellsRevision((r) => r + 1);
@@ -30,7 +55,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   }, [roundId, activeFlowId]);
 
   // Dirty cells awaiting save
-  const dirtyRef = useRef<Map<string, { column_index: number; row_index: number; content: string; color: CellColor; comment: string }>>(new Map());
+  const dirtyRef = useRef<Map<string, DirtyCell>>(new Map());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // -- Load flows for the round --
@@ -77,6 +102,23 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       if (requestId !== cellsLoadRequestRef.current) return;
       const map = new Map<string, FlowCell>();
       data.forEach((c) => map.set(`${c.column_index}:${c.row_index}`, c));
+      for (const cell of dirtyRef.current.values()) {
+        if (cell.flow_id !== flowId) continue;
+        const key = `${cell.column_index}:${cell.row_index}`;
+        const existing = map.get(key);
+        map.set(key, {
+          id: existing?.id ?? '',
+          user_id: existing?.user_id ?? '',
+          flow_id: flowId,
+          column_index: cell.column_index,
+          row_index: cell.row_index,
+          content: cell.content,
+          color: cell.color,
+          comment: cell.comment,
+          created_at: existing?.created_at ?? new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
       setCells(map);
     } catch (err) {
       if (requestId !== cellsLoadRequestRef.current) return;
@@ -96,16 +138,46 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   }, [activeFlowId, loadCells]);
 
   // -- Flush dirty cells to Supabase --
-  const flush = useCallback(async () => {
-    if (!activeFlowId || dirtyRef.current.size === 0) return;
-    const toSave = Array.from(dirtyRef.current.values());
-    dirtyRef.current.clear();
+  const flushFlow = useCallback(async (flowId: string) => {
+    const entries = Array.from(dirtyRef.current.entries()).filter(
+      ([, cell]) => cell.flow_id === flowId
+    );
+    if (entries.length === 0) return;
+    const toSave = entries.map(([, cell]) => ({
+      column_index: cell.column_index,
+      row_index: cell.row_index,
+      content: cell.content,
+      color: cell.color,
+      comment: cell.comment,
+    }));
     try {
-      await api.upsertCells(activeFlowId, toSave);
+      await api.upsertCells(flowId, toSave);
+      for (const [key, cell] of entries) {
+        const current = dirtyRef.current.get(key);
+        if (current && sameDirtyCell(current, cell)) {
+          dirtyRef.current.delete(key);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save cells');
     }
-  }, [activeFlowId]);
+  }, []);
+
+  const flush = useCallback(async () => {
+    if (!activeFlowId || dirtyRef.current.size === 0) return;
+    await flushFlow(activeFlowId);
+  }, [activeFlowId, flushFlow]);
+
+  const queueDirtyCell = useCallback((flowId: string, col: number, row: number, content: string, color: CellColor, comment: string) => {
+    dirtyRef.current.set(dirtyCellKey(flowId, col, row), {
+      flow_id: flowId,
+      column_index: col,
+      row_index: row,
+      content,
+      color,
+      comment,
+    });
+  }, []);
 
   const scheduleSave = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -116,10 +188,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (dirtyRef.current.size > 0 && activeFlowId) {
-        const toSave = Array.from(dirtyRef.current.values());
-        dirtyRef.current.clear();
         // Best-effort flush on unload (may not complete for async)
-        api.upsertCells(activeFlowId, toSave).catch(() => {});
+        void flushFlow(activeFlowId);
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -127,7 +197,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       window.removeEventListener('beforeunload', handleBeforeUnload);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [activeFlowId]);
+  }, [activeFlowId, flushFlow]);
 
   // Flush when switching flow tabs (activeFlowId changes)
   const prevFlowIdRef = useRef<string | null>(null);
@@ -136,15 +206,11 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       // Flush dirty cells from the previous flow
       if (dirtyRef.current.size > 0) {
         const prevId = prevFlowIdRef.current;
-        const toSave = Array.from(dirtyRef.current.values());
-        dirtyRef.current.clear();
-        api.upsertCells(prevId, toSave).catch((err) => {
-          setError(err instanceof Error ? err.message : 'Failed to save cells');
-        });
+        void flushFlow(prevId);
       }
     }
     prevFlowIdRef.current = activeFlowId;
-  }, [activeFlowId]);
+  }, [activeFlowId, flushFlow]);
 
   // Manual save (Ctrl+S)
   const saveNow = useCallback(async () => {
@@ -197,14 +263,14 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
           updated_at: new Date().toISOString(),
         });
 
-        dirtyRef.current.set(key, { column_index: col, row_index: row, content, color, comment });
+        queueDirtyCell(activeFlowId, col, row, content, color, comment);
         return next;
       });
 
       scheduleSave();
       bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave, bumpCellsRevision]
+    [activeFlowId, scheduleSave, bumpCellsRevision, queueDirtyCell]
   );
 
   const updateCell = useCallback(
@@ -230,14 +296,14 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
         });
 
         // Track dirty cell for auto-save
-        dirtyRef.current.set(key, { column_index: col, row_index: row, content, color: cellColor, comment: existing?.comment ?? '' });
+        queueDirtyCell(activeFlowId, col, row, content, cellColor, existing?.comment ?? '');
         return next;
       });
 
       scheduleSave();
       bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave, bumpCellsRevision]
+    [activeFlowId, scheduleSave, bumpCellsRevision, queueDirtyCell]
   );
 
   const updateCellColor = useCallback(
@@ -270,20 +336,14 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
             created_at: existing?.created_at ?? new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
-          dirtyRef.current.set(key, {
-            column_index: u.col,
-            row_index: u.row,
-            content: u.content,
-            color: u.color,
-            comment: comment,
-          });
+          queueDirtyCell(activeFlowId, u.col, u.row, u.content, u.color, comment);
         }
         return next;
       });
       scheduleSave();
       bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave, bumpCellsRevision]
+    [activeFlowId, scheduleSave, bumpCellsRevision, queueDirtyCell]
   );
 
   // -- Row count per column (dynamic, only counts non-empty cells) --
@@ -377,11 +437,19 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
 
   const reorderFlows = useCallback(
     async (reordered: Flow[]) => {
+      const requestId = ++reorderRequestRef.current;
       setFlows(reordered);
       const updates = reordered.map((f, i) => ({ id: f.id, display_order: i }));
-      await api.reorderFlows(updates);
+      try {
+        await api.reorderFlows(updates);
+      } catch (err) {
+        if (requestId === reorderRequestRef.current) {
+          setError(err instanceof Error ? err.message : 'Failed to reorder tabs');
+          await loadFlows();
+        }
+      }
     },
-    []
+    [loadFlows]
   );
 
   const selectFlow = useCallback((id: string) => {
