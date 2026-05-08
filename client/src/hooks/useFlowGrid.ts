@@ -438,19 +438,18 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const reorderFlows = useCallback(
     async (reordered: Flow[]) => {
       const requestId = ++reorderRequestRef.current;
-      const previous = flows;
       setFlows(reordered);
       const updates = reordered.map((f, i) => ({ id: f.id, display_order: i }));
       try {
         await api.reorderFlows(updates);
       } catch (err) {
         if (requestId === reorderRequestRef.current) {
-          setFlows(previous);
           setError(err instanceof Error ? err.message : 'Failed to reorder tabs');
+          await loadFlows();
         }
       }
     },
-    [flows]
+    [loadFlows]
   );
 
   const selectFlow = useCallback((id: string) => {

@@ -655,7 +655,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
           setCellComment(edit.col, edit.row, edit.newComment);
         }
       }
-      if (mod && e.key === 's') {
+      if (mod && key === 's') {
         e.preventDefault();
         grid.saveNow();
       }
