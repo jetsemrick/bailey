@@ -43,6 +43,9 @@ CREATE TABLE profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email text NOT NULL UNIQUE,
   role user_role NOT NULL DEFAULT 'User',
+  first_name text,
+  last_name text,
+  default_team_code text,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
@@ -258,14 +261,16 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  INSERT INTO profiles (id, email, role)
+  INSERT INTO profiles (id, email, role, first_name, last_name)
   VALUES (
     NEW.id,
     NEW.email,
     CASE
       WHEN is_admin_email(NEW.email) THEN 'Admin'::user_role
       ELSE 'User'::user_role
-    END
+    END,
+    NULLIF(NEW.raw_user_meta_data->>'first_name', ''),
+    NULLIF(NEW.raw_user_meta_data->>'last_name', '')
   )
   ON CONFLICT (id) DO UPDATE
   SET
@@ -274,6 +279,8 @@ BEGIN
       WHEN is_admin_email(EXCLUDED.email) THEN 'Admin'::user_role
       ELSE profiles.role
     END,
+    first_name = COALESCE(profiles.first_name, EXCLUDED.first_name),
+    last_name = COALESCE(profiles.last_name, EXCLUDED.last_name),
     updated_at = now();
 
   RETURN NEW;
@@ -300,14 +307,16 @@ CREATE TRIGGER prevent_role_self_escalation
   BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION prevent_role_self_escalation();
 
-INSERT INTO profiles (id, email, role)
+INSERT INTO profiles (id, email, role, first_name, last_name)
 SELECT
   users.id,
   users.email,
   CASE
     WHEN is_admin_email(users.email) THEN 'Admin'::user_role
     ELSE 'User'::user_role
-  END
+  END,
+  NULLIF(users.raw_user_meta_data->>'first_name', ''),
+  NULLIF(users.raw_user_meta_data->>'last_name', '')
 FROM auth.users AS users
 WHERE users.email IS NOT NULL
 ON CONFLICT (id) DO UPDATE
@@ -317,6 +326,8 @@ SET
     WHEN is_admin_email(EXCLUDED.email) THEN 'Admin'::user_role
     ELSE profiles.role
   END,
+  first_name = COALESCE(profiles.first_name, EXCLUDED.first_name),
+  last_name = COALESCE(profiles.last_name, EXCLUDED.last_name),
   updated_at = now();
 
 CREATE TRIGGER on_auth_user_created

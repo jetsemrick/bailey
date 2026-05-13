@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
+import * as api from '../db/api';
 import { MACRO_ACTION_OPTIONS, type KeyboardMacro, shortcutFromKeyboardEvent } from '../keyboardMacros';
 import { useKeyboardMacrosContext } from '../contexts/KeyboardMacrosContext';
 
@@ -7,13 +10,25 @@ const DEFAULT_FONT_SIZE = 14;
 const MIN_FONT_SIZE = 8;
 const MAX_FONT_SIZE = 24;
 
-export default function Settings() {
+interface SettingsProps {
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+}
+
+export default function Settings({ isOpen, onOpenChange }: SettingsProps) {
+  const { profile, isAdmin, requestPasswordReset, refreshProfile } = useAuth();
   const { macros: serverMacros, loading: macrosLoading, save, reset } = useKeyboardMacrosContext();
-  const [isOpen, setIsOpen] = useState(false);
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
   const [macros, setMacros] = useState<KeyboardMacro[]>([]);
   const [savedMacros, setSavedMacros] = useState<KeyboardMacro[]>([]);
   const [macroErrors, setMacroErrors] = useState<string[]>([]);
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [resetNotice, setResetNotice] = useState<string | null>(null);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [defaultTeamCode, setDefaultTeamCode] = useState('');
+  const [profileSubmitting, setProfileSubmitting] = useState(false);
+  const [profileNotice, setProfileNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem(FONT_SIZE_KEY);
@@ -40,7 +55,16 @@ export default function Settings() {
     setMacros(serverMacros);
     setSavedMacros(serverMacros);
     setMacroErrors([]);
-  }, [isOpen, serverMacros]);
+    setFirstName(profile?.first_name ?? '');
+    setLastName(profile?.last_name ?? '');
+    setDefaultTeamCode(profile?.default_team_code ?? '');
+  }, [isOpen, profile, serverMacros]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setProfileNotice(null);
+    setResetNotice(null);
+  }, [isOpen]);
 
   const macrosDirty = useMemo(
     () => JSON.stringify(macros) !== JSON.stringify(savedMacros),
@@ -87,38 +111,50 @@ export default function Settings() {
     setMacroErrors(errors);
   };
 
+  const handlePasswordResetRequest = async () => {
+    setResetNotice(null);
+    setResetSubmitting(true);
+    const { error } = await requestPasswordReset();
+    setResetSubmitting(false);
+
+    if (error) {
+      setResetNotice(error);
+      return;
+    }
+
+    setResetNotice('Password reset email sent. Check your inbox.');
+  };
+
+  const handleProfileSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setProfileNotice(null);
+    setProfileSubmitting(true);
+
+    try {
+      await api.updateCurrentProfile({
+        first_name: firstName.trim() || null,
+        last_name: lastName.trim() || null,
+        default_team_code: defaultTeamCode.trim() || null,
+      });
+      await refreshProfile();
+      setProfileNotice('Profile saved.');
+    } catch (error) {
+      setProfileNotice(error instanceof Error ? error.message : 'Failed to save profile.');
+    } finally {
+      setProfileSubmitting(false);
+    }
+  };
+
   return (
     <>
-      <button
-        onClick={() => setIsOpen(true)}
-        className="p-2 rounded hover:bg-card-02 transition-colors"
-        title="Settings"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="text-foreground/60"
-        >
-          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-      </button>
-
       {isOpen && (
         <>
-          <div className="fixed inset-0 bg-black/20 z-40" onClick={() => setIsOpen(false)} />
+          <div className="fixed inset-0 bg-black/20 z-40" onClick={() => onOpenChange(false)} />
           <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card border border-card-04 rounded-lg shadow-lg z-50 p-6 w-[min(900px,calc(100vw-2rem))] max-h-[85vh] overflow-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold">Settings</h2>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => onOpenChange(false)}
                 className="p-1 rounded hover:bg-card-02 transition-colors"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -145,6 +181,82 @@ export default function Settings() {
                   Reset
                 </button>
               </div>
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-card-04 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold">Profile</h3>
+                <p className="text-xs text-foreground/60 mt-1">
+                  Update your name and default team code for new competitor tournaments.
+                </p>
+              </div>
+              <form onSubmit={handleProfileSubmit} className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1">First name</label>
+                    <input
+                      value={firstName}
+                      onChange={(event) => setFirstName(event.target.value)}
+                      className="w-full px-3 py-1.5 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm"
+                      placeholder="First"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Last name</label>
+                    <input
+                      value={lastName}
+                      onChange={(event) => setLastName(event.target.value)}
+                      className="w-full px-3 py-1.5 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm"
+                      placeholder="Last"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Default team code</label>
+                  <input
+                    value={defaultTeamCode}
+                    onChange={(event) => setDefaultTeamCode(event.target.value)}
+                    className="w-full px-3 py-1.5 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm"
+                    placeholder="Kansas PS"
+                  />
+                  <p className="text-xs text-foreground/50 mt-1">
+                    Examples: Kansas PS, Shawnee Mission East BS
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="submit"
+                    disabled={profileSubmitting}
+                    className="px-3 py-1.5 text-xs bg-accent text-white rounded hover:opacity-90 transition-opacity disabled:opacity-50"
+                  >
+                    {profileSubmitting ? 'Saving...' : 'Save Profile'}
+                  </button>
+                  {profileNotice && (
+                    <div className="text-xs text-foreground/60">{profileNotice}</div>
+                  )}
+                </div>
+              </form>
+              <div className="flex flex-wrap items-center gap-2">
+                {isAdmin && (
+                  <Link
+                    to="/admin"
+                    onClick={() => onOpenChange(false)}
+                    className="px-3 py-1.5 text-xs border border-card-04 rounded hover:bg-card-02 transition-colors"
+                  >
+                    Admin Dashboard
+                  </Link>
+                )}
+                <button
+                  onClick={handlePasswordResetRequest}
+                  disabled={resetSubmitting}
+                  className="px-3 py-1.5 text-xs border border-card-04 rounded hover:bg-card-02 transition-colors disabled:opacity-50"
+                >
+                  {resetSubmitting ? 'Sending reset email...' : 'Change Password'}
+                </button>
+              </div>
+              {resetNotice && (
+                <div className="text-xs text-foreground/60">{resetNotice}</div>
+              )}
             </div>
 
             <div className="mt-6 pt-6 border-t border-card-04 space-y-3">

@@ -83,6 +83,20 @@ export async function getCurrentProfile(): Promise<Profile | null> {
   return data;
 }
 
+export async function updateCurrentProfile(
+  fields: Partial<Pick<Profile, 'first_name' | 'last_name' | 'default_team_code'>>
+): Promise<Profile> {
+  const userId = await uid();
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(fields)
+    .eq('id', userId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function listAdminUserSummaries(
   pageLimit = 100,
   pageOffset = 0

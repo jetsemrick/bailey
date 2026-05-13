@@ -20,16 +20,17 @@ interface TournamentFormProps {
   }) => void;
   onCancel: () => void;
   title: string;
+  defaultTeamCode?: string | null;
 }
 
-export default function TournamentForm({ initial, onSubmit, onCancel, title }: TournamentFormProps) {
+export default function TournamentForm({ initial, onSubmit, onCancel, title, defaultTeamCode }: TournamentFormProps) {
   const [name, setName] = useState(initial?.name ?? '');
   const [date, setDate] = useState(
     initial?.date ?? new Date().toISOString().slice(0, 10)
   );
   const [location, setLocation] = useState(initial?.location ?? '');
   const [tournamentType, setTournamentType] = useState<TournamentType>(initial?.tournament_type ?? 'competitor');
-  const [teamName, setTeamName] = useState(initial?.team_name ?? '');
+  const [teamName, setTeamName] = useState(initial?.team_name ?? defaultTeamCode ?? '');
   const [timerPreset, setTimerPreset] = useState<TimerPreset>(initial?.timer_preset ?? 'high_school');
 
   const handleSubmit = (e: FormEvent) => {

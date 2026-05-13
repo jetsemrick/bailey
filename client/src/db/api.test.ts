@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { getUserMock, rpcMock } = vi.hoisted(() => ({
+const { fromMock, getUserMock, rpcMock } = vi.hoisted(() => ({
+  fromMock: vi.fn(),
   getUserMock: vi.fn(),
   rpcMock: vi.fn(),
 }));
 
 vi.mock('./supabase', () => ({
   supabase: {
+    from: fromMock,
     rpc: rpcMock,
     auth: {
       getUser: getUserMock,
@@ -14,7 +16,7 @@ vi.mock('./supabase', () => ({
   },
 }));
 
-import { listAdminUserSummaries, toError } from './api';
+import { listAdminUserSummaries, toError, updateCurrentProfile } from './api';
 
 describe('toError', () => {
   test('returns Error instances unchanged', () => {
@@ -87,5 +89,52 @@ describe('listAdminUserSummaries', () => {
     });
 
     await expect(listAdminUserSummaries()).rejects.toThrow('Admin access required');
+  });
+});
+
+describe('updateCurrentProfile', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+    getUserMock.mockReset();
+  });
+
+  test('updates editable profile fields for the current user', async () => {
+    const singleMock = vi.fn().mockResolvedValue({
+      data: {
+        id: 'user-1',
+        email: 'debater@example.com',
+        role: 'User',
+        first_name: 'Pat',
+        last_name: 'Smith',
+        default_team_code: 'Kansas PS',
+        created_at: '2026-03-11T00:00:00.000Z',
+        updated_at: '2026-03-12T00:00:00.000Z',
+      },
+      error: null,
+    });
+    const selectMock = vi.fn(() => ({ single: singleMock }));
+    const eqMock = vi.fn(() => ({ select: selectMock }));
+    const updateMock = vi.fn(() => ({ eq: eqMock }));
+    fromMock.mockReturnValue({ update: updateMock });
+    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+
+    const profile = await updateCurrentProfile({
+      first_name: 'Pat',
+      last_name: 'Smith',
+      default_team_code: 'Kansas PS',
+    });
+
+    expect(fromMock).toHaveBeenCalledWith('profiles');
+    expect(updateMock).toHaveBeenCalledWith({
+      first_name: 'Pat',
+      last_name: 'Smith',
+      default_team_code: 'Kansas PS',
+    });
+    expect(eqMock).toHaveBeenCalledWith('id', 'user-1');
+    expect(profile).toMatchObject({
+      first_name: 'Pat',
+      last_name: 'Smith',
+      default_team_code: 'Kansas PS',
+    });
   });
 });
