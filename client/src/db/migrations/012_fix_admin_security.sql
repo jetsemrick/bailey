@@ -14,9 +14,11 @@ CREATE TABLE IF NOT EXISTS admin_emails (
 
 ALTER TABLE admin_emails ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Only admins can view admin_emails" ON admin_emails;
 CREATE POLICY "Only admins can view admin_emails" ON admin_emails
   FOR SELECT USING (public.is_admin());
 
+DROP POLICY IF EXISTS "Only admins can manage admin_emails" ON admin_emails;
 CREATE POLICY "Only admins can manage admin_emails" ON admin_emails
   FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
 
