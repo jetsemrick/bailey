@@ -1,0 +1,92 @@
+name: Apply Supabase migrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "client/src/db/migrations/**"
+      - "scripts/apply-supabase-migrations.mjs"
+      - ".github/workflows/db-migrate.yml"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode"
+        required: true
+        default: "apply"
+        type: choice
+        options:
+          - apply
+          - dry-run
+          - status
+          - bootstrap
+      bootstrap_up_to:
+        description: "When mode=bootstrap: record migrations 001..NNN as applied without running them (e.g. 011)."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-migrations
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: ${{ inputs.mode || 'apply' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pg client library
+        run: npm install --no-save --no-package-lock pg@^8.13.0
+
+      - name: Validate secret
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set. Add it under Settings > Secrets and variables > Actions (or in the 'production' environment)." 
+            echo "Use the Supabase pooler connection string from Project Settings > Database > Connection string > 'URI' (Transaction or Session pooler, port 6543/5432)."
+            exit 1
+          fi
+
+      - name: Apply migrations
+        if: ${{ (inputs.mode || 'apply') == 'apply' }}
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/apply-supabase-migrations.mjs
+
+      - name: Dry run
+        if: ${{ inputs.mode == 'dry-run' }}
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/apply-supabase-migrations.mjs --dry-run
+
+      - name: Status
+        if: ${{ inputs.mode == 'status' }}
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/apply-supabase-migrations.mjs --status
+
+      - name: Bootstrap (record existing migrations as applied)
+        if: ${{ inputs.mode == 'bootstrap' }}
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BOOTSTRAP_UP_TO: ${{ inputs.bootstrap_up_to }}
+        run: |
+          if [ -z "${BOOTSTRAP_UP_TO}" ]; then
+            echo "::error::bootstrap_up_to input is required when mode=bootstrap"
+            exit 1
+          fi
+          node scripts/apply-supabase-migrations.mjs --bootstrap-up-to "${BOOTSTRAP_UP_TO}"
