@@ -133,7 +133,7 @@ async function main() {
     await ensureMigrationsTable(client);
     const applied = await loadAppliedVersions(client);
 
-    const summary = { applied: 0, pending: 0, bootstrapped: 0, drift: 0 };
+    const summary = { applied: 0, pending: 0, bootstrapped: 0, drift: 0, newly_applied: 0 };
 
     for (const mig of files) {
       const path = resolve(MIGRATIONS_DIR, mig.file);
@@ -153,7 +153,7 @@ async function main() {
         continue;
       }
 
-      if (BOOTSTRAP_UP_TO && mig.version <= BOOTSTRAP_UP_TO) {
+      if (BOOTSTRAP_UP_TO && parseInt(mig.version, 10) <= parseInt(BOOTSTRAP_UP_TO, 10)) {
         if (DRY_RUN || STATUS_ONLY) {
           console.log(`b ${fmt(mig.version, mig.name)} - would record as applied (bootstrap)`);
         } else {
@@ -183,7 +183,7 @@ async function main() {
       try {
         await runMigration(client, mig, sql, checksum);
         console.log(`  ok ${mig.version}`);
-        summary.pending += 1;
+        summary.newly_applied += 1;
       } catch (err) {
         console.error(`  FAILED ${mig.version}: ${err.message}`);
         if (err.position) console.error(`  position: ${err.position}`);
@@ -193,7 +193,7 @@ async function main() {
     }
 
     console.log(
-      `\nsummary: applied=${summary.applied} pending=${summary.pending} bootstrapped=${summary.bootstrapped} drift=${summary.drift}`
+      `\nsummary: applied=${summary.applied} newly_applied=${summary.newly_applied} pending=${summary.pending} bootstrapped=${summary.bootstrapped} drift=${summary.drift}`
     );
   } finally {
     await client.end();
