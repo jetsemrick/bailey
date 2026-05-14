@@ -9,6 +9,9 @@ export interface Profile {
   id: string;
   email: string;
   role: UserRole;
+  first_name: string | null;
+  last_name: string | null;
+  default_team_code: string | null;
   created_at: string;
   updated_at: string;
 }

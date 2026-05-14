@@ -4,8 +4,10 @@ import Layout from '../components/Layout';
 import TournamentForm from '../components/TournamentForm';
 import ConfirmModal from '../components/ConfirmModal';
 import { useTournaments } from '../hooks/useTournaments';
+import { useAuth } from '../auth/AuthContext';
 
 export default function HomePage() {
+  const { profile } = useAuth();
   const { tournaments, loading, create, remove } = useTournaments();
   const [showForm, setShowForm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -131,6 +133,7 @@ export default function HomePage() {
       {showForm && (
         <TournamentForm
           title="New Tournament"
+          defaultTeamCode={profile?.default_team_code}
           onSubmit={handleCreate}
           onCancel={() => setShowForm(false)}
         />
