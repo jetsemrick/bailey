@@ -55,10 +55,14 @@ export default function Settings({ isOpen, onOpenChange }: SettingsProps) {
     setMacros(serverMacros);
     setSavedMacros(serverMacros);
     setMacroErrors([]);
+  }, [isOpen, serverMacros]);
+
+  useEffect(() => {
+    if (!isOpen) return;
     setFirstName(profile?.first_name ?? '');
     setLastName(profile?.last_name ?? '');
     setDefaultTeamCode(profile?.default_team_code ?? '');
-  }, [isOpen, profile, serverMacros]);
+  }, [isOpen, profile]);
 
   useEffect(() => {
     if (!isOpen) return;
