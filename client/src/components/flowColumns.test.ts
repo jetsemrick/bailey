@@ -7,7 +7,7 @@ import {
 } from '../lib/flowColumns';
 
 describe('getColumnsForFlow', () => {
-  test('standard aff sheets consolidate 2NC and 1NR into one Negative block column', () => {
+  test('standard aff sheets consolidate 2NC and 1NR into one Block column', () => {
     const columns = getColumnsForFlow('aff', 'standard');
     expect(columns.map((c) => c.label)).toEqual([
       '1AC',

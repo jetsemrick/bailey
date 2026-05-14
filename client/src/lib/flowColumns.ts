@@ -5,7 +5,7 @@ export interface FlowGridColumn {
   dataCol: number;
 }
 
-export const NEGATIVE_BLOCK_LABEL = '2NC/1NR';
+export const NEGATIVE_BLOCK_LABEL = 'Block';
 export const NEGATIVE_BLOCK_DATA_COL = 3;
 export const LEGACY_1NR_DATA_COL = 4;
 
