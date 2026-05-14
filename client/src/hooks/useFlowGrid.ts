@@ -136,6 +136,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     loadFlows();
   }, [loadFlows]);
 
+  const activeFlowTabKind = flows.find((flow) => flow.id === activeFlowId)?.tab_kind;
+
   // -- Load cells when active flow changes --
   const loadCells = useCallback(async (flowId: string, normalizeNegativeBlock = true) => {
     const requestId = ++cellsLoadRequestRef.current;
@@ -164,13 +166,12 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     if (activeFlowId) {
       // DEB-26: clear immediately so we never show the previous tab's cells while loading
       setCells(new Map());
-      const activeFlow = flows.find((flow) => flow.id === activeFlowId);
-      loadCells(activeFlowId, activeFlow?.tab_kind !== 'cx');
+      loadCells(activeFlowId, activeFlowTabKind !== 'cx');
     } else {
       cellsLoadRequestRef.current++;
       setCells(new Map());
     }
-  }, [activeFlowId, flows, loadCells]);
+  }, [activeFlowId, activeFlowTabKind, loadCells]);
 
   // -- Flush dirty cells to Supabase --
   const flush = useCallback(async () => {

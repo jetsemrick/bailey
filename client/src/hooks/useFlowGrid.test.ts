@@ -98,6 +98,7 @@ const apiMock = vi.hoisted(() => ({
   listFlows: vi.fn(),
   listCells: vi.fn(),
   upsertCells: vi.fn(),
+  updateFlow: vi.fn(),
 }));
 
 vi.mock('react', () => hookHarness.react);
@@ -177,7 +178,11 @@ describe('useFlowGrid', () => {
       removeEventListener: vi.fn(),
     });
     apiMock.listFlows.mockResolvedValue([makeFlow('flow-a'), makeFlow('flow-b')]);
+    apiMock.listCells.mockResolvedValue([]);
     apiMock.upsertCells.mockResolvedValue(undefined);
+    apiMock.updateFlow.mockImplementation((id: string, fields: Partial<Flow>) =>
+      Promise.resolve({ ...makeFlow(id), ...fields })
+    );
   });
 
   test('ignores stale cells when tab loads resolve out of order', async () => {
@@ -251,6 +256,22 @@ describe('useFlowGrid', () => {
 
     expect(grid.getCellContent(4, 0)).toBe('cx 1NR note');
     expect(apiMock.upsertCells).not.toHaveBeenCalled();
+  });
+
+  test('does not reload active cells when flow metadata changes without a tab kind change', async () => {
+    apiMock.listCells.mockResolvedValue([makeCell('flow-a', 'unsaved draft', 3, 0)]);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+    grid = await flushAndRender();
+    expect(grid.getCellContent(3, 0)).toBe('unsaved draft');
+    expect(apiMock.listCells).toHaveBeenCalledTimes(1);
+
+    await grid.renameFlow('flow-a', 'Renamed flow');
+    grid = renderHook();
+
+    expect(grid.getCellContent(3, 0)).toBe('unsaved draft');
+    expect(apiMock.listCells).toHaveBeenCalledTimes(1);
   });
 });
 
