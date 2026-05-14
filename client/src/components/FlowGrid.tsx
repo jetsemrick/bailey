@@ -18,11 +18,12 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import Cell, { COLOR_BG, sanitizeHtml } from './Cell';
 import { Trash2, X } from 'lucide-react';
-import { SPEECH_COLUMNS, type CellColor, type FlowTabKind } from '../db/types';
+import { type CellColor } from '../db/types';
 import type { useFlowGrid } from '../hooks/useFlowGrid';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import { shortcutFromKeyboardEvent, type MacroAction } from '../keyboardMacros';
 import { useKeyboardMacrosContext } from '../contexts/KeyboardMacrosContext';
+import { getColumnsForFlow, NEGATIVE_BLOCK_LABEL } from '../lib/flowColumns';
 
 type FlowGridApi = ReturnType<typeof useFlowGrid>;
 
@@ -41,21 +42,8 @@ const COLUMN_COLORS: Record<string, string> = {
 
 const COLUMN_SIDES: Record<string, 'aff' | 'neg'> = {
   '1AC': 'aff', '1NC': 'neg', '2AC': 'aff', '2NC': 'neg',
-  '1NR': 'neg', '1AR': 'aff', '2NR': 'neg', '2AR': 'aff',
+  '1NR': 'neg', [NEGATIVE_BLOCK_LABEL]: 'neg', '1AR': 'aff', '2NR': 'neg', '2AR': 'aff',
 };
-
-/** Column config: label + data column index (0-7). Neg flows omit 1AC. CX uses full aff grid (DEB-28). */
-function getColumnsForFlow(
-  initiatedBy: 'aff' | 'neg' | null,
-  tabKind: FlowTabKind = 'standard'
-): { label: string; dataCol: number }[] {
-  const effective = tabKind === 'cx' ? 'aff' : initiatedBy;
-  const all: { label: string; dataCol: number }[] = SPEECH_COLUMNS.map((label, i) => ({ label, dataCol: i }));
-  if (effective === 'neg') {
-    return all.filter((c) => c.label !== '1AC');
-  }
-  return all;
-}
 
 const CELL_HEIGHT = 28; // matches min-h-[28px] on each cell
 const HEADER_HEIGHT = 36; // approximate column header height

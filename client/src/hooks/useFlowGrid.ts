@@ -6,8 +6,75 @@ import {
   readStoredActiveFlowId,
   writeStoredActiveFlowId,
 } from '../lib/roundFlowTabStorage';
+import { LEGACY_1NR_DATA_COL, NEGATIVE_BLOCK_DATA_COL } from '../lib/flowColumns';
 
 const DEBOUNCE_MS = 500;
+
+type CellUpdate = {
+  column_index: number;
+  row_index: number;
+  content: string;
+  color: CellColor;
+  comment: string;
+};
+
+function hasCellData(cell: Pick<FlowCell, 'content' | 'color' | 'comment'>): boolean {
+  return cell.content.trim() !== '' || cell.color !== null || cell.comment.trim() !== '';
+}
+
+export function normalizeNegativeBlockCells(data: FlowCell[]): {
+  cells: Map<string, FlowCell>;
+  migrationUpdates: CellUpdate[];
+} {
+  const cells = new Map<string, FlowCell>();
+  const legacyOneNrCells = data
+    .filter((cell) => cell.column_index === LEGACY_1NR_DATA_COL && hasCellData(cell))
+    .sort((a, b) => a.row_index - b.row_index);
+
+  let blockMaxRow = -1;
+  for (const cell of data) {
+    if (cell.column_index === LEGACY_1NR_DATA_COL) continue;
+    cells.set(`${cell.column_index}:${cell.row_index}`, cell);
+    if (cell.column_index === NEGATIVE_BLOCK_DATA_COL && hasCellData(cell)) {
+      blockMaxRow = Math.max(blockMaxRow, cell.row_index);
+    }
+  }
+
+  if (legacyOneNrCells.length === 0) {
+    return { cells, migrationUpdates: [] };
+  }
+
+  const migrationUpdates: CellUpdate[] = [];
+  let nextBlockRow = blockMaxRow + 1;
+  for (const legacyCell of legacyOneNrCells) {
+    const key = `${NEGATIVE_BLOCK_DATA_COL}:${nextBlockRow}`;
+    const existingTarget = cells.get(key);
+    const migratedCell: FlowCell = {
+      ...legacyCell,
+      id: existingTarget?.id ?? legacyCell.id,
+      column_index: NEGATIVE_BLOCK_DATA_COL,
+      row_index: nextBlockRow,
+    };
+    cells.set(key, migratedCell);
+    migrationUpdates.push({
+      column_index: NEGATIVE_BLOCK_DATA_COL,
+      row_index: nextBlockRow,
+      content: legacyCell.content,
+      color: legacyCell.color,
+      comment: legacyCell.comment,
+    });
+    migrationUpdates.push({
+      column_index: LEGACY_1NR_DATA_COL,
+      row_index: legacyCell.row_index,
+      content: '',
+      color: null,
+      comment: '',
+    });
+    nextBlockRow += 1;
+  }
+
+  return { cells, migrationUpdates };
+}
 
 export function useFlowGrid(roundId: string | undefined, _round?: Round | null) {
   const [flows, setFlows] = useState<Flow[]>([]);
@@ -30,7 +97,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   }, [roundId, activeFlowId]);
 
   // Dirty cells awaiting save
-  const dirtyRef = useRef<Map<string, { column_index: number; row_index: number; content: string; color: CellColor; comment: string }>>(new Map());
+  const dirtyRef = useRef<Map<string, CellUpdate>>(new Map());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // -- Load flows for the round --
@@ -70,14 +137,23 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   }, [loadFlows]);
 
   // -- Load cells when active flow changes --
-  const loadCells = useCallback(async (flowId: string) => {
+  const loadCells = useCallback(async (flowId: string, normalizeNegativeBlock = true) => {
     const requestId = ++cellsLoadRequestRef.current;
     try {
       const data = await api.listCells(flowId);
       if (requestId !== cellsLoadRequestRef.current) return;
-      const map = new Map<string, FlowCell>();
-      data.forEach((c) => map.set(`${c.column_index}:${c.row_index}`, c));
+      const { cells: map, migrationUpdates } = normalizeNegativeBlock
+        ? normalizeNegativeBlockCells(data)
+        : {
+            cells: new Map(data.map((c) => [`${c.column_index}:${c.row_index}`, c])),
+            migrationUpdates: [],
+          };
       setCells(map);
+      if (migrationUpdates.length > 0) {
+        api.upsertCells(flowId, migrationUpdates).catch((err) => {
+          setError(err instanceof Error ? err.message : 'Failed to save Negative block cells');
+        });
+      }
     } catch (err) {
       if (requestId !== cellsLoadRequestRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to load cells');
@@ -88,12 +164,13 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     if (activeFlowId) {
       // DEB-26: clear immediately so we never show the previous tab's cells while loading
       setCells(new Map());
-      loadCells(activeFlowId);
+      const activeFlow = flows.find((flow) => flow.id === activeFlowId);
+      loadCells(activeFlowId, activeFlow?.tab_kind !== 'cx');
     } else {
       cellsLoadRequestRef.current++;
       setCells(new Map());
     }
-  }, [activeFlowId, loadCells]);
+  }, [activeFlowId, flows, loadCells]);
 
   // -- Flush dirty cells to Supabase --
   const flush = useCallback(async () => {
@@ -292,7 +369,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       let max = -1;
       for (const [key, cell] of cells) {
         const [c, r] = key.split(':').map(Number);
-        if (c === col && cell.content.trim() !== '' && r > max) max = r;
+        if (c === col && hasCellData(cell) && r > max) max = r;
       }
       return max + 1;
     },
