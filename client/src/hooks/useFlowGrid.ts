@@ -160,15 +160,23 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     }
   }, []);
 
+  const prevActiveFlowIdForLoadRef = useRef<string | null>(null);
   useEffect(() => {
     if (activeFlowId) {
-      // DEB-26: clear immediately so we never show the previous tab's cells while loading
-      setCells(new Map());
-      const activeFlow = flows.find((flow) => flow.id === activeFlowId);
-      loadCells(activeFlowId, activeFlow?.tab_kind !== 'cx');
+      // Only reload cells when activeFlowId actually changes (not when flows array changes)
+      if (prevActiveFlowIdForLoadRef.current !== activeFlowId) {
+        prevActiveFlowIdForLoadRef.current = activeFlowId;
+        // DEB-26: clear immediately so we never show the previous tab's cells while loading
+        setCells(new Map());
+        const activeFlow = flows.find((flow) => flow.id === activeFlowId);
+        loadCells(activeFlowId, activeFlow?.tab_kind !== 'cx');
+      }
     } else {
-      cellsLoadRequestRef.current++;
-      setCells(new Map());
+      if (prevActiveFlowIdForLoadRef.current !== null) {
+        prevActiveFlowIdForLoadRef.current = null;
+        cellsLoadRequestRef.current++;
+        setCells(new Map());
+      }
     }
   }, [activeFlowId, flows, loadCells]);
 
