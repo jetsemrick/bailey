@@ -7,7 +7,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import { useRounds } from '../hooks/useRounds';
 import * as api from '../db/api';
 import type { Tournament } from '../db/types';
-import { formatRoundName, getRoundLabel } from '../db/types';
+import { getRoundLabel } from '../db/types';
 
 export default function TournamentPage() {
   const { id } = useParams<{ id: string }>();
@@ -136,22 +136,57 @@ export default function TournamentPage() {
                 className="group flex items-center gap-4 bg-card border border-card-04 rounded-lg px-4 py-3 hover:border-accent/40 transition-colors cursor-pointer"
                 onClick={() => navigate(`/round/${r.id}`)}
               >
-                <div className="min-w-24 shrink-0 flex justify-center">
-                  <span className="inline-flex items-center justify-center px-4 py-1.5 rounded-full bg-accent/15 text-accent text-sm font-semibold">
-                    {getRoundLabel(r.round_number)}
-                  </span>
+                <div className="w-28 shrink-0 text-sm font-medium text-foreground/70">
+                  {(() => {
+                    const label = getRoundLabel(r.round_number);
+                    return /^\d+$/.test(label) ? `Round ${label}` : label;
+                  })()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">
-                    {formatRoundName(r, tournament.team_name ?? stateTeamName)}
+                  <div className="text-sm font-medium truncate flex items-center gap-2">
+                    {(() => {
+                      const aff = (r.team_aff ?? '').trim();
+                      const neg = (r.team_neg ?? '').trim();
+                      const tn = (tournament.team_name ?? stateTeamName ?? '').trim();
+                      const isJudge = (tournament.tournament_type ?? stateTournamentType) === 'judge';
+                      
+                      if (aff || neg) {
+                        const affDisplay = aff || (!isJudge && r.side === 'aff' && tn ? tn : 'TBD');
+                        const negDisplay = neg || (!isJudge && r.side === 'neg' && tn ? tn : 'TBD');
+                        return (
+                          <>
+                            <span className={!isJudge && r.side === 'aff' ? 'font-semibold text-foreground' : 'text-foreground/80'}>
+                              {affDisplay} <span className="text-blue-500/80 font-normal text-xs ml-0.5">(Aff)</span>
+                            </span>
+                            <span className="text-foreground/40 font-normal text-xs">vs</span>
+                            <span className={!isJudge && r.side === 'neg' ? 'font-semibold text-foreground' : 'text-foreground/80'}>
+                              {negDisplay} <span className="text-red-500/80 font-normal text-xs ml-0.5">(Neg)</span>
+                            </span>
+                          </>
+                        );
+                      }
+                      
+                      if (r.opponent) {
+                        const myTeam = tn || 'Us';
+                        const oppTeam = r.opponent;
+                        const affDisplay = r.side === 'aff' ? myTeam : oppTeam;
+                        const negDisplay = r.side === 'neg' ? myTeam : oppTeam;
+                        return (
+                          <>
+                            <span className={!isJudge && r.side === 'aff' ? 'font-semibold text-foreground' : 'text-foreground/80'}>
+                              {affDisplay} <span className="text-blue-500/80 font-normal text-xs ml-0.5">(Aff)</span>
+                            </span>
+                            <span className="text-foreground/40 font-normal text-xs">vs</span>
+                            <span className={!isJudge && r.side === 'neg' ? 'font-semibold text-foreground' : 'text-foreground/80'}>
+                              {negDisplay} <span className="text-red-500/80 font-normal text-xs ml-0.5">(Neg)</span>
+                            </span>
+                          </>
+                        );
+                      }
+                      
+                      return <span>{getRoundLabel(r.round_number)}</span>;
+                    })()}
                   </div>
-                  {(tournament.tournament_type ?? stateTournamentType) !== 'judge' && (
-                    <div className="text-xs text-foreground/50">
-                      <span className={r.side === 'aff' ? 'text-blue-500' : 'text-red-500'}>
-                        {r.side === 'aff' ? 'Affirmative' : 'Negative'}
-                      </span>
-                    </div>
-                  )}
                 </div>
                 {r.judge?.trim() && (
                   <div className="shrink-0 flex flex-nowrap gap-1 justify-end">
