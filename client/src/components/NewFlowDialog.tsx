@@ -8,8 +8,16 @@ interface NewFlowDialogProps {
   hasCxTab?: boolean;
 }
 
+function normalizeTabCountInput(value: string): string {
+  if (value === '') return '';
+  const num = parseInt(value, 10);
+  if (Number.isNaN(num)) return '';
+  return String(Math.min(20, num));
+}
+
 export default function NewFlowDialog({ onSubmit, onCancel, hasCxTab = false }: NewFlowDialogProps) {
-  const [count, setCount] = useState(1);
+  const [countInput, setCountInput] = useState('1');
+  const tabCount = Math.max(1, parseInt(countInput, 10) || 1);
   const [side, setSide] = useState<'aff' | 'neg'>('aff');
   const [sheetKind, setSheetKind] = useState<'standard' | 'cx'>('standard');
   const [submitting, setSubmitting] = useState(false);
@@ -22,7 +30,7 @@ export default function NewFlowDialog({ onSubmit, onCancel, hasCxTab = false }: 
       if (sheetKind === 'cx') {
         await onSubmit('aff', 1, 'cx');
       } else {
-        await onSubmit(side, Math.max(1, count), 'standard');
+        await onSubmit(side, tabCount, 'standard');
       }
     } finally {
       setSubmitting(false);
@@ -78,8 +86,8 @@ export default function NewFlowDialog({ onSubmit, onCancel, hasCxTab = false }: 
                   type="number"
                   min={1}
                   max={20}
-                  value={count}
-                  onChange={(e) => setCount(Number(e.target.value))}
+                  value={countInput}
+                  onChange={(e) => setCountInput(normalizeTabCountInput(e.target.value))}
                   className="w-full px-3 py-1.5 rounded border border-card-04 bg-background text-foreground focus:outline-none focus:border-accent text-sm"
                 />
               </div>
@@ -120,8 +128,8 @@ export default function NewFlowDialog({ onSubmit, onCancel, hasCxTab = false }: 
             >
               {sheetKind === 'cx'
                 ? 'Create CX tab'
-                : count > 1
-                  ? `Create ${count} Tabs`
+                : tabCount > 1
+                  ? `Create ${tabCount} Tabs`
                   : 'Create Tab'}
             </button>
             <button
