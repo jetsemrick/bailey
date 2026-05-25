@@ -1,7 +1,12 @@
 import { useState, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
-import { Flow, FlowCell } from '../db/types';
+import { Flow, FlowCell, SPEECH_COLUMNS } from '../db/types';
 import * as api from '../db/api';
 import Cell from './Cell';
+
+const DECISION_COLUMNS = [
+  { label: '2NR', colIndex: SPEECH_COLUMNS.indexOf('2NR'), side: 'neg' as const },
+  { label: '2AR', colIndex: SPEECH_COLUMNS.indexOf('2AR'), side: 'aff' as const },
+];
 
 interface DecisionViewProps {
   flows: Flow[];
@@ -98,7 +103,7 @@ export default function DecisionView({
   visibleFlows.forEach((flow) => {
     const cells = cellsByFlow.get(flow.id) ?? new Map();
     cells.forEach((cell) => {
-      if ([6, 7].includes(cell.column_index) && cell.row_index > globalMaxRow) {
+      if (DECISION_COLUMNS.some((col) => col.colIndex === cell.column_index) && cell.row_index > globalMaxRow) {
         globalMaxRow = cell.row_index;
       }
     });
@@ -175,8 +180,16 @@ function DecisionFlowPanel({
         </button>
       </div>
       <div className="flex-1 flex">
-        <DecisionColumn label="2NR" colIndex={6} rowCount={rowCount} cells={cells} side="neg" />
-        <DecisionColumn label="2AR" colIndex={7} rowCount={rowCount} cells={cells} side="aff" />
+        {DECISION_COLUMNS.map((column) => (
+          <DecisionColumn
+            key={column.label}
+            label={column.label}
+            colIndex={column.colIndex}
+            rowCount={rowCount}
+            cells={cells}
+            side={column.side}
+          />
+        ))}
       </div>
     </div>
   );

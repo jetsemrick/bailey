@@ -1,28 +1,33 @@
 import { describe, expect, test } from 'vitest';
-import { SPEECH_COLUMNS } from '../db/types';
+import { getColumnsForFlow } from './flowColumns';
 
-/** Mirrors FlowGrid getColumnsForFlow for CX (aff-like full grid). */
-function getColumnsForFlow(
-  initiatedBy: 'aff' | 'neg' | null,
-  tabKind: 'standard' | 'cx' = 'standard'
-): { label: string; dataCol: number }[] {
-  const effective = tabKind === 'cx' ? 'aff' : initiatedBy;
-  const all = SPEECH_COLUMNS.map((label, i) => ({ label, dataCol: i }));
-  if (effective === 'neg') {
-    return all.filter((c) => c.label !== '1AC');
-  }
-  return all;
-}
+describe('getColumnsForFlow', () => {
+  test('aff flows use Block as a singular column', () => {
+    const aff = getColumnsForFlow('aff', 'standard');
 
-describe('getColumnsForFlow CX', () => {
-  test('CX uses full 8 columns like aff', () => {
+    expect(aff.map((c) => c.label)).toEqual([
+      '1AC',
+      '1NC',
+      '2AC',
+      'Block',
+      '1AR',
+      '2NR',
+      '2AR',
+    ]);
+    expect(aff.map((c) => c.dataCol)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+
+  test('CX uses full 7 columns like aff', () => {
     const cx = getColumnsForFlow('neg', 'cx');
-    expect(cx.length).toBe(8);
+    expect(cx.length).toBe(7);
     expect(cx.map((c) => c.label)).toContain('1AC');
+    expect(cx.map((c) => c.label)).toContain('Block');
   });
 
   test('standard neg omits 1AC', () => {
     const neg = getColumnsForFlow('neg', 'standard');
     expect(neg.map((c) => c.label)).not.toContain('1AC');
+    expect(neg.map((c) => c.label)).toContain('Block');
+    expect(neg.map((c) => c.dataCol)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 });

@@ -116,7 +116,7 @@ CREATE TABLE flow_cells (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   flow_id uuid REFERENCES flow_tabs(id) ON DELETE CASCADE NOT NULL,
-  column_index integer NOT NULL CHECK (column_index >= 0 AND column_index <= 7),
+  column_index integer NOT NULL CHECK (column_index >= 0 AND column_index <= 6),
   row_index integer NOT NULL CHECK (row_index >= 0),
   content text DEFAULT '',
   color text CHECK (color IN ('yellow', 'green', 'blue') OR color IS NULL),
