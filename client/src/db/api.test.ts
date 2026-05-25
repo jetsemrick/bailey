@@ -16,7 +16,12 @@ vi.mock('./supabase', () => ({
   },
 }));
 
-import { listAdminUserSummaries, toError, updateCurrentProfile } from './api';
+import {
+  listAdminUserSummaries,
+  normalizeImportedFlowCells,
+  toError,
+  updateCurrentProfile,
+} from './api';
 
 describe('toError', () => {
   test('returns Error instances unchanged', () => {
@@ -89,6 +94,49 @@ describe('listAdminUserSummaries', () => {
     });
 
     await expect(listAdminUserSummaries()).rejects.toThrow('Admin access required');
+  });
+});
+
+function makeExportedCell(columnIndex: number, content: string) {
+  return {
+    id: `cell-${columnIndex}`,
+    flow_id: 'flow-1',
+    column_index: columnIndex,
+    row_index: 0,
+    content,
+    color: null,
+    comment: '',
+    created_at: '2026-03-11T00:00:00.000Z',
+    updated_at: '2026-03-11T00:00:00.000Z',
+  };
+}
+
+describe('normalizeImportedFlowCells', () => {
+  test('drops legacy 1NR cells and shifts later columns into the Block schema', () => {
+    const cells = [
+      makeExportedCell(3, 'old 2NC'),
+      makeExportedCell(4, 'old 1NR'),
+      makeExportedCell(5, 'old 1AR'),
+      makeExportedCell(6, 'old 2NR'),
+      makeExportedCell(7, 'old 2AR'),
+    ];
+
+    expect(normalizeImportedFlowCells(cells).map((cell) => [cell.column_index, cell.content])).toEqual([
+      [3, 'old 2NC'],
+      [4, 'old 1AR'],
+      [5, 'old 2NR'],
+      [6, 'old 2AR'],
+    ]);
+  });
+
+  test('keeps current Block-schema cells unchanged', () => {
+    const cells = [
+      makeExportedCell(3, 'Block'),
+      makeExportedCell(4, '1AR'),
+      makeExportedCell(6, '2AR'),
+    ];
+
+    expect(normalizeImportedFlowCells(cells)).toEqual(cells);
   });
 });
 

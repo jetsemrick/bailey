@@ -1,15 +1,16 @@
 import { supabase } from './supabase';
-import type {
-  Tournament,
-  Round,
-  Flow,
-  FlowCell,
-  FlowAnalytics,
-  RoundAnalytics,
-  CellColor,
-  Profile,
-  AdminUserSummary,
-  PlatformUsageMetrics,
+import {
+  SPEECH_COLUMNS,
+  type Tournament,
+  type Round,
+  type Flow,
+  type FlowCell,
+  type FlowAnalytics,
+  type RoundAnalytics,
+  type CellColor,
+  type Profile,
+  type AdminUserSummary,
+  type PlatformUsageMetrics,
 } from './types';
 import type { KeyboardMacro } from '../keyboardMacros';
 import { DEFAULT_KEYBOARD_MACROS } from '../keyboardMacros';
@@ -500,6 +501,24 @@ export interface ExportedRound {
   round: ExportedRoundData;
 }
 
+type ImportedFlowCell = Omit<FlowCell, 'user_id'>;
+
+export function normalizeImportedFlowCells(cells: ImportedFlowCell[]): ImportedFlowCell[] {
+  const maxColumnIndex = SPEECH_COLUMNS.length - 1;
+  const usesLegacyBlockSplit = cells.some((cell) => cell.column_index > maxColumnIndex);
+
+  return cells.flatMap((cell) => {
+    if (!usesLegacyBlockSplit) {
+      return cell.column_index >= 0 && cell.column_index <= maxColumnIndex ? [cell] : [];
+    }
+    if (cell.column_index === 4) return [];
+    const column_index = cell.column_index > 4 ? cell.column_index - 1 : cell.column_index;
+    return column_index >= 0 && column_index <= maxColumnIndex
+      ? [{ ...cell, column_index }]
+      : [];
+  });
+}
+
 export async function exportTournament(tournamentId: string): Promise<ExportedTournament> {
   const tournament = await getTournament(tournamentId);
   const rounds = await listRounds(tournamentId);
@@ -579,8 +598,9 @@ export async function importRound(
       throw fErr;
     }
 
-    if (flow.cells.length > 0) {
-      const cellRows = flow.cells.map((c) => ({
+    const normalizedCells = normalizeImportedFlowCells(flow.cells);
+    if (normalizedCells.length > 0) {
+      const cellRows = normalizedCells.map((c) => ({
         user_id: userId,
         flow_id: newFlow.id,
         column_index: c.column_index,
@@ -654,8 +674,9 @@ export async function importTournament(data: ExportedTournament): Promise<string
         throw fErr;
       }
 
-      if (flow.cells.length > 0) {
-        const cellRows = flow.cells.map((c) => ({
+      const normalizedCells = normalizeImportedFlowCells(flow.cells);
+      if (normalizedCells.length > 0) {
+        const cellRows = normalizedCells.map((c) => ({
           user_id: userId,
           flow_id: newFlow.id,
           column_index: c.column_index,

@@ -18,11 +18,12 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import Cell, { COLOR_BG, sanitizeHtml } from './Cell';
 import { Trash2, X } from 'lucide-react';
-import { SPEECH_COLUMNS, type CellColor, type FlowTabKind } from '../db/types';
+import { SPEECH_COLUMNS, type CellColor, type SpeechColumn } from '../db/types';
 import type { useFlowGrid } from '../hooks/useFlowGrid';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import { shortcutFromKeyboardEvent, type MacroAction } from '../keyboardMacros';
 import { useKeyboardMacrosContext } from '../contexts/KeyboardMacrosContext';
+import { getColumnsForFlow } from './flowColumns';
 
 type FlowGridApi = ReturnType<typeof useFlowGrid>;
 
@@ -38,24 +39,6 @@ const COLUMN_COLORS: Record<string, string> = {
   aff: 'text-blue-600 dark:text-blue-400',
   neg: 'text-red-600 dark:text-red-400',
 };
-
-const COLUMN_SIDES: Record<string, 'aff' | 'neg'> = {
-  '1AC': 'aff', '1NC': 'neg', '2AC': 'aff', '2NC': 'neg',
-  '1NR': 'neg', '1AR': 'aff', '2NR': 'neg', '2AR': 'aff',
-};
-
-/** Column config: label + data column index (0-7). Neg flows omit 1AC. CX uses full aff grid (DEB-28). */
-function getColumnsForFlow(
-  initiatedBy: 'aff' | 'neg' | null,
-  tabKind: FlowTabKind = 'standard'
-): { label: string; dataCol: number }[] {
-  const effective = tabKind === 'cx' ? 'aff' : initiatedBy;
-  const all: { label: string; dataCol: number }[] = SPEECH_COLUMNS.map((label, i) => ({ label, dataCol: i }));
-  if (effective === 'neg') {
-    return all.filter((c) => c.label !== '1AC');
-  }
-  return all;
-}
 
 const CELL_HEIGHT = 28; // matches min-h-[28px] on each cell
 const HEADER_HEIGHT = 36; // approximate column header height
@@ -128,7 +111,7 @@ function SortableCell({
           <div 
             className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent/60 shadow-sm pointer-events-none ring-1 ring-background" 
           />
-          <div className={`absolute top-5 w-48 p-2 bg-card border border-card-04 rounded shadow-lg text-xs text-foreground whitespace-pre-wrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 ${col <= 1 ? 'right-auto -left-4' : col >= 6 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}>
+          <div className={`absolute top-5 w-48 p-2 bg-card border border-card-04 rounded shadow-lg text-xs text-foreground whitespace-pre-wrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 ${col <= 1 ? 'right-auto -left-4' : col >= SPEECH_COLUMNS.length - 1 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}>
             {comment}
           </div>
         </div>
@@ -142,6 +125,7 @@ function SortableCell({
 function FlowColumn({
   dataCol,
   label,
+  side,
   rowCount,
   getCellContent,
   getCellColor,
@@ -159,7 +143,8 @@ function FlowColumn({
   onContextMenu,
 }: {
   dataCol: number;
-  label: string;
+  label: SpeechColumn;
+  side: 'aff' | 'neg';
   rowCount: number;
   getCellContent: (col: number, row: number) => string;
   getCellColor: (col: number, row: number) => CellColor;
@@ -176,7 +161,6 @@ function FlowColumn({
   onNavigate: (from: { col: number; row: number }, dir: 'up' | 'down' | 'left' | 'right') => void;
   onContextMenu: (e: React.MouseEvent, col: number, row: number) => void;
 }) {
-  const side = COLUMN_SIDES[label];
   const isFocusedColumn = selectedCell?.col === dataCol;
   const items = useMemo(
     () => Array.from({ length: rowCount }, (_, r) => `${dataCol}:${r}`),
@@ -370,7 +354,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
 
   const maxRows = useMemo(() => {
     let contentMax = 0;
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < SPEECH_COLUMNS.length; i++) {
       contentMax = Math.max(contentMax, getColumnRowCount(i) + 1);
     }
     const minRows = Math.max(minRowsFromHeight, 35);
@@ -466,7 +450,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
     [getCellComment, getCellContent, getCellColor, setCellComment, undoRedo]
   );
 
-  // Columns for current flow (aff: 8 cols, neg: 7 cols, no 1AC)
+  // Columns for current flow (aff/CX: all cols, neg: no 1AC)
   const flowColumns = useMemo(
     () =>
       getColumnsForFlow(activeFlow?.initiated_by ?? null, activeFlow?.tab_kind ?? 'standard'),
@@ -791,11 +775,12 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
     >
       <div ref={containerRef} className="flex-1 overflow-auto min-h-0">
         <div className="flex min-w-[800px] min-h-full">
-          {flowColumns.map(({ label, dataCol }) => (
+          {flowColumns.map(({ label, dataCol, side }) => (
             <FlowColumn
               key={`${label}-${dataCol}`}
               dataCol={dataCol}
               label={label}
+              side={side}
               rowCount={maxRows}
               getCellContent={getCellContent}
               getCellColor={getCellColor}
@@ -829,8 +814,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
           const color = getCellColor(dragItem.col, dragItem.row);
           const comment = getCellComment(dragItem.col, dragItem.row);
           if (!content.trim()) return null;
-          const label = flowColumns.find((c) => c.dataCol === dragItem.col)?.label;
-          const side = label ? COLUMN_SIDES[label] : 'aff';
+          const side = flowColumns.find((c) => c.dataCol === dragItem.col)?.side ?? 'aff';
           const colorClass = color ? COLOR_BG[color] ?? '' : '';
           const sideTextColor = side === 'aff' ? 'text-blue-600 dark:text-blue-400' : side === 'neg' ? 'text-red-600 dark:text-red-400' : 'text-foreground';
           return (

@@ -168,7 +168,7 @@ export interface FlowCell {
 
 /** Column labels in speech order */
 export const SPEECH_COLUMNS = [
-  '1AC', '1NC', '2AC', '2NC', '1NR', '1AR', '2NR', '2AR',
+  '1AC', '1NC', '2AC', 'Block', '1AR', '2NR', '2AR',
 ] as const;
 
 export type SpeechColumn = (typeof SPEECH_COLUMNS)[number];
@@ -178,8 +178,7 @@ export const COLUMN_META: Record<SpeechColumn, { side: 'aff' | 'neg'; minutes: n
   '1AC': { side: 'aff', minutes: 8 },
   '1NC': { side: 'neg', minutes: 8 },
   '2AC': { side: 'aff', minutes: 8 },
-  '2NC': { side: 'neg', minutes: 8 },
-  '1NR': { side: 'neg', minutes: 5 },
+  'Block': { side: 'neg', minutes: 13 },
   '1AR': { side: 'aff', minutes: 5 },
   '2NR': { side: 'neg', minutes: 5 },
   '2AR': { side: 'aff', minutes: 5 },

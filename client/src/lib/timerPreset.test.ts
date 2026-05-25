@@ -29,9 +29,9 @@ describe('timerPreset', () => {
   test('getColumnMetaForPreset maps constructives vs rebuttals', () => {
     const hs = getColumnMetaForPreset('high_school');
     expect(hs['1AC'].minutes).toBe(8);
-    expect(hs['1NR'].minutes).toBe(5);
+    expect(hs['Block'].minutes).toBe(13);
     const col = getColumnMetaForPreset('college');
-    expect(col['2NC'].minutes).toBe(9);
+    expect(col['Block'].minutes).toBe(15);
     expect(col['2AR'].minutes).toBe(6);
   });
 });

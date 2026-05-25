@@ -6,8 +6,8 @@ export type { TimerPreset };
 /** Prep time is 10 minutes for both presets (DEB-29). */
 export const PREP_SECONDS = 10 * 60;
 
-const CONSTRUCTIVE: SpeechColumn[] = ['1AC', '1NC', '2AC', '2NC'];
-const REBUTTAL: SpeechColumn[] = ['1NR', '1AR', '2NR', '2AR'];
+const CONSTRUCTIVE: SpeechColumn[] = ['1AC', '1NC', '2AC'];
+const REBUTTAL: SpeechColumn[] = ['1AR', '2NR', '2AR'];
 
 export function normalizeTimerPreset(value: string | undefined | null): TimerPreset {
   return value === 'college' ? 'college' : 'high_school';
@@ -38,7 +38,11 @@ export function getColumnMetaForPreset(
   for (const col of SPEECH_COLUMNS) {
     const side: 'aff' | 'neg' =
       col === '1AC' || col === '2AC' || col === '1AR' || col === '2AR' ? 'aff' : 'neg';
-    const minutes = (CONSTRUCTIVE as readonly string[]).includes(col) ? c : r;
+    const minutes = col === 'Block'
+      ? c + r
+      : (CONSTRUCTIVE as readonly string[]).includes(col)
+        ? c
+        : r;
     base[col] = { side, minutes };
   }
   return base;
