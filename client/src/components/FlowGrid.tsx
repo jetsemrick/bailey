@@ -79,14 +79,15 @@ function SortableCell({
     transition: transition ?? undefined,
     ...(selected && { scrollMarginTop: HEADER_HEIGHT }),
   };
+  const dragListeners = editing ? undefined : listeners;
 
   return (
     <div
       ref={setNodeRef}
       style={style}
       {...restAttributes}
-      {...listeners}
-      className={`relative cursor-grab active:cursor-grabbing hover:z-50 ${isDragging ? 'opacity-0 pointer-events-none' : ''} ${selected ? 'z-40' : ''}`}
+      {...dragListeners}
+      className={`relative ${editing ? '' : 'cursor-grab active:cursor-grabbing'} hover:z-50 ${isDragging ? 'opacity-0 pointer-events-none' : ''} ${selected ? 'z-40' : ''}`}
       data-cell-id={`${col}:${row}`}
       onContextMenu={onContextMenu}
     >
