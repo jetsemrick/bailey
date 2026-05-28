@@ -14,11 +14,13 @@ interface CellProps {
   side?: 'aff' | 'neg';
   onUpdate: (content: string) => void;
   onColorChange?: (color: CellColor) => void;
-  /** Whether this cell is selected (has selection ring, arrow keys navigate) */
+  /** Whether this cell is in the selection set */
   selected?: boolean;
+  /** Primary cell in a multi-selection (stronger highlight) */
+  primary?: boolean;
   /** Whether this cell is in editing mode (contenteditable focused, arrow keys move caret) */
   editing?: boolean;
-  onFocus?: () => void;
+  onFocus?: (e: React.MouseEvent) => void;
   onStartEditing?: () => void;
   onStopEditing?: () => void;
   /** Character to insert when entering edit mode (e.g. from type-to-edit) */
@@ -59,6 +61,7 @@ export default function Cell({
   side,
   onUpdate,
   selected,
+  primary,
   editing,
   onFocus,
   onStartEditing,
@@ -192,7 +195,11 @@ export default function Cell({
   // Sanitize content on load to prevent XSS from imported/database content
   const sanitizedContent = sanitizeHtml(content);
 
-  const selectedClass = selected ? 'border border-accent/25 bg-card-01 rounded-sm' : 'border border-transparent';
+  const selectedClass = primary
+    ? 'border border-accent/25 bg-card-01 rounded-sm'
+    : selected
+      ? 'ring-1 ring-accent/15 bg-card-02 rounded-sm border border-transparent'
+      : 'border border-transparent';
   const editingBgClass = editing ? 'bg-card-01' : '';
 
   return (
@@ -202,6 +209,7 @@ export default function Cell({
       suppressContentEditableWarning
       {...(!editing && { dangerouslySetInnerHTML: { __html: sanitizedContent } })}
       onClick={!editing ? onFocus : undefined}
+      aria-selected={selected ? true : undefined}
       onDoubleClick={!editing ? onStartEditing : undefined}
       onBlur={() => { commitEdit(); onStopEditing?.(); }}
       onKeyDown={handleKeyDown}

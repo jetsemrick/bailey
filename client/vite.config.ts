@@ -6,6 +6,10 @@ export default defineConfig({
   server: {
     port: 3000,
   },
+  test: {
+    include: ['src/**/*.test.ts'],
+    exclude: ['e2e/**', 'node_modules/**'],
+  },
 })
 
 
