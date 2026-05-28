@@ -23,12 +23,13 @@ import type { useFlowGrid } from '../hooks/useFlowGrid';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import { shortcutFromKeyboardEvent, type MacroAction } from '../keyboardMacros';
 import { useKeyboardMacrosContext } from '../contexts/KeyboardMacrosContext';
-import { getColumnsForFlow } from './flowColumns';
+import { getColumnsForFlow, resolveSpeechDataColForFlow } from './flowColumns';
 
 type FlowGridApi = ReturnType<typeof useFlowGrid>;
 
 interface FlowGridProps {
   grid: FlowGridApi;
+  activeSpeech?: SpeechColumn;
   /**
    * If true, scrolls the grid to the far right on mount.
    */
@@ -291,7 +292,7 @@ function CommentPopover({
   );
 }
 
-export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
+export default function FlowGrid({ grid, activeSpeech, defaultScrollToEnd }: FlowGridProps) {
   const {
     activeFlowId, activeFlow, getCellContent, getCellColor, getCellComment, updateCell, updateCellColor, setCellComment,
     getColumnRowCount, bulkUpdateCells,
@@ -325,7 +326,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
     // Reset the ref first so we can scroll again on flow/mode changes
     hasScrolledToEndRef.current = false;
 
-    if (defaultScrollToEnd && containerRef.current) {
+    if (defaultScrollToEnd && !activeSpeech && containerRef.current) {
       // Small timeout to ensure layout is ready
       setTimeout(() => {
         if (containerRef.current) {
@@ -334,19 +335,20 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
         }
       }, 0);
     }
-  }, [defaultScrollToEnd, activeFlowId]);
-
-  // Clear undo/redo stack and selection when switching flow tabs
-  useEffect(() => {
-    undoRedo.clear();
-    setSelectedCell(null);
-    setIsEditing(false);
-  }, [activeFlowId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [defaultScrollToEnd, activeFlowId, activeSpeech]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
   );
+
+  // Columns for current flow (aff/CX: all cols, neg: no 1AC)
+  const flowColumns = useMemo(
+    () =>
+      getColumnsForFlow(activeFlow?.initiated_by ?? null, activeFlow?.tab_kind ?? 'standard'),
+    [activeFlow?.initiated_by, activeFlow?.tab_kind]
+  );
+  const dataCols = useMemo(() => flowColumns.map((c) => c.dataCol), [flowColumns]);
 
   // Compute rows: fill available height, and always have at least 1 empty row beyond content
   const minRowsFromHeight = containerHeight > 0
@@ -366,6 +368,40 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
     selectedCellRef.current = selectedCell;
   }, [selectedCell]);
 
+  // Clear transient edit state and select the active speech when switching flow tabs.
+  useEffect(() => {
+    undoRedo.clear();
+    setIsEditing(false);
+    setPendingInput(null);
+    setContextMenu(null);
+
+    if (!activeSpeech) {
+      setSelectedCell(null);
+      return;
+    }
+
+    const dataCol = resolveSpeechDataColForFlow(
+      activeSpeech,
+      activeFlow?.initiated_by ?? null,
+      activeFlow?.tab_kind ?? 'standard'
+    );
+
+    if (dataCol === null) {
+      setSelectedCell(null);
+      return;
+    }
+
+    setSelectedCell((prev) => ({
+      col: dataCol,
+      row: Math.min(prev?.row ?? 0, maxRows - 1),
+    }));
+  }, [
+    activeFlowId,
+    activeSpeech,
+    activeFlow?.initiated_by,
+    activeFlow?.tab_kind,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Keep selected cell fully visible and never under sticky column header
   useEffect(() => {
     if (!selectedCell || !containerRef.current) return;
@@ -380,7 +416,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
     );
 
     if (!headerEl) {
-      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
       return;
     }
 
@@ -389,6 +425,14 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
     const containerRect = containerEl.getBoundingClientRect();
     const topBoundary = headerRect.bottom + 2;
     const bottomBoundary = containerRect.bottom - 2;
+    const leftBoundary = containerRect.left + 2;
+    const rightBoundary = containerRect.right - 2;
+
+    if (cellRect.left < leftBoundary) {
+      containerEl.scrollBy({ left: cellRect.left - leftBoundary, behavior: 'smooth' });
+    } else if (cellRect.right > rightBoundary) {
+      containerEl.scrollBy({ left: cellRect.right - rightBoundary, behavior: 'smooth' });
+    }
 
     if (cellRect.top < topBoundary) {
       containerEl.scrollBy({ top: cellRect.top - topBoundary, behavior: 'smooth' });
@@ -450,14 +494,6 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
     },
     [getCellComment, getCellContent, getCellColor, setCellComment, undoRedo]
   );
-
-  // Columns for current flow (aff/CX: all cols, neg: no 1AC)
-  const flowColumns = useMemo(
-    () =>
-      getColumnsForFlow(activeFlow?.initiated_by ?? null, activeFlow?.tab_kind ?? 'standard'),
-    [activeFlow?.initiated_by, activeFlow?.tab_kind]
-  );
-  const dataCols = useMemo(() => flowColumns.map((c) => c.dataCol), [flowColumns]);
 
   // Navigation
   const navigate = useCallback(

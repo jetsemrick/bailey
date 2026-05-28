@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { getColumnsForFlow } from './flowColumns';
+import { getColumnsForFlow, getSpeechDataCol, resolveSpeechDataColForFlow } from './flowColumns';
 
 describe('getColumnsForFlow', () => {
   test('aff flows use Block as a singular column', () => {
@@ -29,5 +29,19 @@ describe('getColumnsForFlow', () => {
     expect(neg.map((c) => c.label)).not.toContain('1AC');
     expect(neg.map((c) => c.label)).toContain('Block');
     expect(neg.map((c) => c.dataCol)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+});
+
+describe('resolveSpeechDataColForFlow', () => {
+  test('resolves exact columns for aff flows', () => {
+    expect(resolveSpeechDataColForFlow('2NR', 'aff', 'standard')).toBe(getSpeechDataCol('2NR'));
+  });
+
+  test('falls back to the nearest visible column for standard neg flows', () => {
+    expect(resolveSpeechDataColForFlow('1AC', 'neg', 'standard')).toBe(getSpeechDataCol('1NC'));
+  });
+
+  test('resolves exact columns for CX flows', () => {
+    expect(resolveSpeechDataColForFlow('2AR', 'neg', 'cx')).toBe(getSpeechDataCol('2AR'));
   });
 });

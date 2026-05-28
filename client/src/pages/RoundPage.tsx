@@ -4,6 +4,7 @@ import Layout from '../components/Layout';
 import Sidebar from '../components/Sidebar';
 import FlowGrid from '../components/FlowGrid';
 import FlowTabs from '../components/FlowTabs';
+import ActiveSpeechPicker from '../components/ActiveSpeechPicker';
 import FlowAnalytics from '../components/FlowAnalytics';
 import RoundAnalytics from '../components/RoundAnalytics';
 import DecisionView from '../components/DecisionView';
@@ -11,8 +12,9 @@ import NewFlowDialog from '../components/NewFlowDialog';
 import { useFlowGrid } from '../hooks/useFlowGrid';
 import { RoundTimerProvider, useRoundTimer } from '../contexts/RoundTimerContext';
 import { normalizeTimerPreset } from '../lib/timerPreset';
+import { readStoredActiveSpeech, writeStoredActiveSpeech } from '../lib/roundActiveSpeechStorage';
 import * as api from '../db/api';
-import type { FlowTabKind, Round, Tournament } from '../db/types';
+import type { FlowTabKind, Round, SpeechColumn, Tournament } from '../db/types';
 import { formatRoundName } from '../db/types';
 
 export default function RoundPage() {
@@ -36,10 +38,18 @@ function RoundPageInner() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [viewMode, setViewMode] = useState<'flow' | 'analytics' | 'split'>('flow');
   const [rebuttalFocus, setRebuttalFocus] = useState(true);
+  const [activeSpeech, setActiveSpeech] = useState<SpeechColumn>(() =>
+    id ? readStoredActiveSpeech(id) ?? '1AC' : '1AC'
+  );
   /** Persists across Flow / Decision view switches (DecisionView unmounts). */
   const [decisionVisibleFlowIds, setDecisionVisibleFlowIds] = useState<Set<string>>(new Set());
   const decisionVisibilityReadyRef = useRef(false);
   const prevFlowIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!id) return;
+    setActiveSpeech(readStoredActiveSpeech(id) ?? '1AC');
+  }, [id]);
 
   useEffect(() => {
     const ids = new Set(grid.flows.map((f) => f.id));
@@ -105,6 +115,11 @@ function RoundPageInner() {
   ) => {
     const ok = await grid.addFlow(initiatedBy, count, tabKind);
     if (ok) setShowNewFlow(false);
+  };
+
+  const handleActiveSpeechChange = (speech: SpeechColumn) => {
+    setActiveSpeech(speech);
+    if (id) writeStoredActiveSpeech(id, speech);
   };
 
   if (loadingMeta || grid.loading) {
@@ -175,22 +190,30 @@ function RoundPageInner() {
                 Decision
               </button>
             )}
-            {viewMode === 'split' && (
-              <div className="ml-auto flex items-center gap-2 pr-3">
-                <span className="text-xs text-foreground/50">Rebuttal Focus</span>
-                <button
-                  onClick={() => setRebuttalFocus((v) => !v)}
-                  className={`relative w-8 h-[18px] rounded-full transition-colors ${
-                    rebuttalFocus ? 'bg-accent' : 'bg-card-04'
-                  }`}
-                  aria-label="Toggle rebuttal focus"
-                >
-                  <span
-                    className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${
-                      rebuttalFocus ? 'translate-x-[14px]' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
+            {(viewMode === 'flow' || viewMode === 'split') && (
+              <div className="ml-auto flex items-center gap-3 pr-3">
+                <ActiveSpeechPicker
+                  activeSpeech={activeSpeech}
+                  onChange={handleActiveSpeechChange}
+                />
+                {viewMode === 'split' && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-foreground/50">Rebuttal Focus</span>
+                    <button
+                      onClick={() => setRebuttalFocus((v) => !v)}
+                      className={`relative w-8 h-[18px] rounded-full transition-colors ${
+                        rebuttalFocus ? 'bg-accent' : 'bg-card-04'
+                      }`}
+                      aria-label="Toggle rebuttal focus"
+                    >
+                      <span
+                        className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${
+                          rebuttalFocus ? 'translate-x-[14px]' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -207,7 +230,7 @@ function RoundPageInner() {
                     onVisibleFlowIdsChange={setDecisionVisibleFlowIds}
                   />
                 ) : (
-                  <FlowGrid grid={grid} defaultScrollToEnd />
+                  <FlowGrid grid={grid} defaultScrollToEnd activeSpeech={activeSpeech} />
                 )}
               </div>
               <div className="flex flex-col w-[380px] shrink-0 min-h-0 bg-background">
@@ -215,7 +238,7 @@ function RoundPageInner() {
               </div>
             </div>
           ) : viewMode === 'flow' ? (
-            <FlowGrid grid={grid} />
+            <FlowGrid grid={grid} activeSpeech={activeSpeech} />
           ) : grid.activeFlow ? (
             <FlowAnalytics
               flow={grid.activeFlow}
