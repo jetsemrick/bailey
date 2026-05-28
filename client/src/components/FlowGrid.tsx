@@ -414,11 +414,16 @@ export default function FlowGrid({ grid, activeSpeech, defaultScrollToEnd }: Flo
     const headerEl = containerEl.querySelector<HTMLElement>(
       `[data-column-header="${selectedCell.col}"]`
     );
+    const columnEl = containerEl.querySelector<HTMLElement>(
+      `[data-flow-col="${selectedCell.col}"]`
+    );
 
     if (!headerEl) {
       el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
       return;
     }
+
+    columnEl?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
 
     const cellRect = el.getBoundingClientRect();
     const headerRect = headerEl.getBoundingClientRect();
