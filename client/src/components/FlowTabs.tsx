@@ -95,7 +95,7 @@ export default function FlowTabs({
   };
 
   return (
-    <div className="flex items-center border-t border-card-04 bg-card px-2 py-1 gap-1 overflow-x-auto shrink-0">
+    <div className="flex flex-nowrap items-center border-t border-card-04 bg-card px-2 py-1 gap-1 overflow-x-auto shrink-0">
       {flows.map((flow) => (
         <div
           key={flow.id}
@@ -103,7 +103,7 @@ export default function FlowTabs({
           onDragStart={(e) => handleDragStart(e, flow.id)}
           onDragOver={handleDragOver}
           onDrop={(e) => handleDrop(e, flow.id)}
-          className={`px-3 py-1 cursor-pointer rounded-t border-t border-x text-sm transition-colors select-none ${
+          className={`max-w-[9rem] shrink-0 px-3 py-1 cursor-pointer rounded-t border-t border-x text-sm transition-colors select-none ${
             activeFlowId === flow.id
               ? 'bg-background border-card-04 font-medium text-foreground -mb-px pb-1.5'
               : 'bg-card-01 border-transparent text-foreground/70 hover:bg-card-02 hover:text-foreground'
@@ -124,13 +124,13 @@ export default function FlowTabs({
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <span className="flex items-center gap-1">
+            <span className="flex min-w-0 items-center gap-1">
               <span
-                className={`w-1.5 h-1.5 rounded-full ${
+                className={`w-1.5 h-1.5 shrink-0 rounded-full ${
                   flow.initiated_by === 'aff' ? 'bg-blue-500' : 'bg-red-500'
                 }`}
               />
-              {flow.position_name}
+              <span className="truncate">{flow.position_name}</span>
             </span>
           )}
         </div>
