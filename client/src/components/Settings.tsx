@@ -4,6 +4,8 @@ import { useAuth } from '../auth/AuthContext';
 import * as api from '../db/api';
 import { MACRO_ACTION_OPTIONS, type KeyboardMacro, shortcutFromKeyboardEvent } from '../keyboardMacros';
 import { useKeyboardMacrosContext } from '../contexts/KeyboardMacrosContext';
+import { useFlowSheetVariant } from '../hooks/useFlowSheetVariant';
+import type { FlowSheetVariant } from './flowSheetVariant';
 
 const FONT_SIZE_KEY = 'bailey-font-size';
 const DEFAULT_FONT_SIZE = 14;
@@ -18,6 +20,7 @@ interface SettingsProps {
 export default function Settings({ isOpen, onOpenChange }: SettingsProps) {
   const { profile, isAdmin, requestPasswordReset, refreshProfile } = useAuth();
   const { macros: serverMacros, loading: macrosLoading, save, reset } = useKeyboardMacrosContext();
+  const { variant: flowSheetVariant, setVariant: setFlowSheetVariant } = useFlowSheetVariant();
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
   const [macros, setMacros] = useState<KeyboardMacro[]>([]);
   const [savedMacros, setSavedMacros] = useState<KeyboardMacro[]>([]);
@@ -184,6 +187,29 @@ export default function Settings({ isOpen, onOpenChange }: SettingsProps) {
                 >
                   Reset
                 </button>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-card-04 space-y-2">
+              <label className="block text-sm font-medium">Flow Sheet Style</label>
+              <p className="text-xs text-foreground/60">
+                Sharp uses spreadsheet-style grid lines and square corners.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {(['default', 'sharp'] as const satisfies FlowSheetVariant[]).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setFlowSheetVariant(option)}
+                    className={`px-3 py-1.5 text-xs border rounded transition-colors ${
+                      flowSheetVariant === option
+                        ? 'border-accent bg-accent/10 text-foreground font-medium'
+                        : 'border-card-04 bg-card-01 text-foreground/70 hover:bg-card-02 hover:text-foreground'
+                    }`}
+                  >
+                    {option === 'default' ? 'Default' : 'Sharp'}
+                  </button>
+                ))}
               </div>
             </div>
 

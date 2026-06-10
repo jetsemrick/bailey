@@ -5,6 +5,7 @@ import FlowTabs from '../components/FlowTabs';
 import NewFlowDialog from '../components/NewFlowDialog';
 import { KeyboardMacrosProvider } from '../contexts/KeyboardMacrosContext';
 import { useFlowGridPrototype } from '../hooks/useFlowGridPrototype';
+import { useFlowSheetVariant } from '../hooks/useFlowSheetVariant';
 import type { FlowTabKind } from '../db/types';
 
 export default function FlowPrototypePage() {
@@ -17,6 +18,7 @@ export default function FlowPrototypePage() {
 
 function FlowPrototypeInner() {
   const grid = useFlowGridPrototype();
+  const { variant: flowSheetVariant, setVariant: setFlowSheetVariant } = useFlowSheetVariant();
   const [showNewFlow, setShowNewFlow] = useState(false);
 
   const handleAddFlow = async (
@@ -38,13 +40,35 @@ function FlowPrototypeInner() {
           <span className="text-foreground/20">/</span>
           <span className="text-sm font-medium truncate">Sharp Flow Prototype</span>
         </div>
-        <span className="text-xs text-foreground/50 border border-card-04 px-2 py-0.5 shrink-0">
-          In-memory demo
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex border border-card-04 text-xs">
+            <button
+              type="button"
+              onClick={() => setFlowSheetVariant('default')}
+              className={`px-2 py-0.5 transition-colors ${
+                flowSheetVariant === 'default' ? 'bg-accent/10 font-medium' : 'hover:bg-card-02'
+              }`}
+            >
+              Default
+            </button>
+            <button
+              type="button"
+              onClick={() => setFlowSheetVariant('sharp')}
+              className={`px-2 py-0.5 border-l border-card-04 transition-colors ${
+                flowSheetVariant === 'sharp' ? 'bg-accent/10 font-medium' : 'hover:bg-card-02'
+              }`}
+            >
+              Sharp
+            </button>
+          </div>
+          <span className="text-xs text-foreground/50 border border-card-04 px-2 py-0.5">
+            In-memory demo
+          </span>
+        </div>
       </header>
 
       <div className="shrink-0 border-b border-card-04 bg-card px-4 py-2 text-xs text-foreground/60">
-        Spreadsheet-style flow sheet with square cells and full grid borders. Double-click to edit, drag to reorder.
+        {flowSheetVariant === 'sharp' ? 'Sharp' : 'Default'} flow sheet style. Double-click to edit, drag to reorder.
       </div>
 
       <div className="flex flex-col flex-1 overflow-hidden min-w-0">
@@ -59,7 +83,7 @@ function FlowPrototypeInner() {
           <span className="text-foreground/50 text-xs">Round 4 — AFF 1 sample loaded</span>
         </div>
 
-        <FlowGrid grid={grid} variant="sharp" />
+        <FlowGrid grid={grid} variant={flowSheetVariant} />
 
         <FlowTabs
           flows={grid.flows}
@@ -69,7 +93,7 @@ function FlowPrototypeInner() {
           onRename={grid.renameFlow}
           onDelete={grid.removeFlow}
           onReorder={grid.reorderFlows}
-          variant="sharp"
+          variant={flowSheetVariant}
         />
       </div>
 

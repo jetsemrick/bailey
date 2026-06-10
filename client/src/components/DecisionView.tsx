@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, type Dispatch, type SetStateAction } from 
 import { Flow, FlowCell, SPEECH_COLUMNS } from '../db/types';
 import * as api from '../db/api';
 import Cell from './Cell';
+import { flowSheetRootClass, type FlowSheetVariant } from './flowSheetVariant';
 
 const DECISION_COLUMNS = [
   { label: '2NR', colIndex: SPEECH_COLUMNS.indexOf('2NR'), side: 'neg' as const },
@@ -15,6 +16,7 @@ interface DecisionViewProps {
   /** Lifted to RoundPage so closing sheets survives Flow / Decision tab switches. */
   visibleFlowIds: Set<string>;
   onVisibleFlowIdsChange: Dispatch<SetStateAction<Set<string>>>;
+  variant?: FlowSheetVariant;
 }
 
 export default function DecisionView({
@@ -22,6 +24,7 @@ export default function DecisionView({
   cellsRevision,
   visibleFlowIds,
   onVisibleFlowIdsChange,
+  variant = 'default',
 }: DecisionViewProps) {
   const [cellsByFlow, setCellsByFlow] = useState<Map<string, Map<string, FlowCell>>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -111,8 +114,8 @@ export default function DecisionView({
   const rowCount = Math.max(globalMaxRow + 5, minRowsFromHeight);
 
   return (
-    <div ref={containerRef} className="flex-1 overflow-auto bg-card min-h-0 relative">
-      <div className="flex flex-row min-w-max min-h-full">
+    <div ref={containerRef} className={`flex-1 overflow-auto bg-card min-h-0 relative ${flowSheetRootClass(variant)}`}>
+      <div className={`flex flex-row min-w-max min-h-full ${variant === 'sharp' ? 'border-t border-l border-card-04' : ''}`}>
         {visibleFlows.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-foreground/40 text-sm gap-2 mt-10">
             <p>No sheets visible.</p>
@@ -133,6 +136,7 @@ export default function DecisionView({
               cells={cellsByFlow.get(flow.id) ?? new Map()}
               onClose={() => toggleFlow(flow.id)}
               rowCount={rowCount}
+              variant={variant}
             />
           ))
         )}
@@ -146,14 +150,18 @@ function DecisionFlowPanel({
   cells,
   onClose,
   rowCount,
+  variant,
 }: {
   flow: Flow;
   cells: Map<string, FlowCell>;
   onClose: () => void;
   rowCount: number;
+  variant: FlowSheetVariant;
 }) {
+  const panelBorderClass = variant === 'sharp' ? 'border-r border-b border-card-04' : 'border-r border-card-04 last:border-r-0';
+
   return (
-    <div className="flex flex-col min-w-[300px] w-[350px] shrink-0 border-r border-card-04 last:border-r-0">
+    <div className={`flex flex-col min-w-[300px] w-[350px] shrink-0 ${panelBorderClass}`}>
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-card-04 bg-card shrink-0 sticky top-0 z-20">
         <span className="font-semibold text-xs tracking-wide uppercase text-foreground/80 truncate" title={flow.position_name}>
           {flow.position_name}
@@ -179,7 +187,7 @@ function DecisionFlowPanel({
           </svg>
         </button>
       </div>
-      <div className="flex-1 flex">
+      <div className={`flex-1 flex ${variant === 'sharp' ? 'border-t border-card-04' : ''}`}>
         {DECISION_COLUMNS.map((column) => (
           <DecisionColumn
             key={column.label}
@@ -188,6 +196,7 @@ function DecisionFlowPanel({
             rowCount={rowCount}
             cells={cells}
             side={column.side}
+            variant={variant}
           />
         ))}
       </div>
@@ -201,21 +210,27 @@ function DecisionColumn({
   rowCount,
   cells,
   side,
+  variant,
 }: {
   label: string;
   colIndex: number;
   rowCount: number;
   cells: Map<string, FlowCell>;
   side: 'aff' | 'neg';
+  variant: FlowSheetVariant;
 }) {
   const headerColor =
     side === 'aff' ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400';
+  const columnBorderClass =
+    variant === 'sharp' ? '' : 'border-r border-card-04 last:border-r-0';
+  const headerBorderClass =
+    variant === 'sharp' ? 'border-r border-b border-card-04' : 'border-b border-card-04';
 
   return (
-    <div className="flex-1 flex flex-col min-w-[150px] w-[175px] border-r border-card-04 last:border-r-0">
+    <div className={`flex-1 flex flex-col min-w-[150px] w-[175px] ${columnBorderClass}`}>
       {/* Column Header */}
       <div
-        className={`sticky top-[34px] z-10 px-2 py-1.5 text-xs font-semibold text-center border-b border-card-04 bg-card ${headerColor}`}
+        className={`sticky top-[34px] z-10 px-2 py-1.5 text-xs font-semibold text-center bg-card ${headerColor} ${headerBorderClass}`}
       >
         {label}
       </div>
@@ -226,7 +241,7 @@ function DecisionColumn({
           return (
             <div
               key={`${colIndex}:${r}`}
-              className="relative"
+              className={`relative ${variant === 'sharp' ? 'border-r border-b border-card-04' : ''}`}
             >
               <Cell
                 content={cell?.content ?? ''}
@@ -235,6 +250,7 @@ function DecisionColumn({
                 onUpdate={() => {}}
                 editing={false}
                 selected={false}
+                variant={variant}
               />
             </div>
           );
