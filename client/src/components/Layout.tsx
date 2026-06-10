@@ -2,7 +2,6 @@ import { type ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { KeyboardMacrosProvider } from '../contexts/KeyboardMacrosContext';
-import { FlowSheetVariantProvider } from '../contexts/FlowSheetVariantContext';
 import Settings from './Settings';
 import Timer from './Timer';
 
@@ -31,7 +30,6 @@ export default function Layout({ children, breadcrumbs, headerActions }: LayoutP
 
   return (
     <KeyboardMacrosProvider>
-    <FlowSheetVariantProvider>
     <div className="h-screen flex flex-col bg-background text-foreground">
       {/* Header */}
       <header className="bg-card border-b border-card-04 px-4 h-12 flex items-center justify-between shrink-0">
@@ -152,7 +150,6 @@ export default function Layout({ children, breadcrumbs, headerActions }: LayoutP
       {/* Main content */}
       <main className="flex-1 overflow-hidden flex flex-col">{children}</main>
     </div>
-    </FlowSheetVariantProvider>
     </KeyboardMacrosProvider>
   );
 }
