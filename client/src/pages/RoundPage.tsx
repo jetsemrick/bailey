@@ -9,7 +9,7 @@ import RoundAnalytics from '../components/RoundAnalytics';
 import DecisionView from '../components/DecisionView';
 import NewFlowDialog from '../components/NewFlowDialog';
 import { useFlowGrid } from '../hooks/useFlowGrid';
-import { useFlowSheetVariant } from '../hooks/useFlowSheetVariant';
+import { useFlowSheetVariant } from '../contexts/FlowSheetVariantContext';
 import { RoundTimerProvider, useRoundTimer } from '../contexts/RoundTimerContext';
 import { normalizeTimerPreset } from '../lib/timerPreset';
 import * as api from '../db/api';

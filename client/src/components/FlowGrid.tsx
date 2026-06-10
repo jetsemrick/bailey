@@ -20,14 +20,13 @@ import Cell, { COLOR_BG, sanitizeHtml } from './Cell';
 import { Trash2, X } from 'lucide-react';
 import { SPEECH_COLUMNS, type CellColor, type SpeechColumn } from '../db/types';
 import type { useFlowGrid } from '../hooks/useFlowGrid';
-import type { useFlowGridPrototype } from '../hooks/useFlowGridPrototype';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import { shortcutFromKeyboardEvent, type MacroAction } from '../keyboardMacros';
 import { useKeyboardMacrosContext } from '../contexts/KeyboardMacrosContext';
 import { getColumnsForFlow } from './flowColumns';
 import { flowSheetRootClass, type FlowSheetVariant } from './flowSheetVariant';
 
-type FlowGridApi = ReturnType<typeof useFlowGrid> | ReturnType<typeof useFlowGridPrototype>;
+type FlowGridApi = ReturnType<typeof useFlowGrid>;
 
 interface FlowGridProps {
   grid: FlowGridApi;
