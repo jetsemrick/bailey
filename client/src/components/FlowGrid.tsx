@@ -20,12 +20,14 @@ import Cell, { COLOR_BG, sanitizeHtml } from './Cell';
 import { Trash2, X } from 'lucide-react';
 import { SPEECH_COLUMNS, type CellColor, type SpeechColumn } from '../db/types';
 import type { useFlowGrid } from '../hooks/useFlowGrid';
+import type { useFlowGridPrototype } from '../hooks/useFlowGridPrototype';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import { shortcutFromKeyboardEvent, type MacroAction } from '../keyboardMacros';
 import { useKeyboardMacrosContext } from '../contexts/KeyboardMacrosContext';
 import { getColumnsForFlow } from './flowColumns';
+import { flowSheetRootClass, type FlowSheetVariant } from './flowSheetVariant';
 
-type FlowGridApi = ReturnType<typeof useFlowGrid>;
+type FlowGridApi = ReturnType<typeof useFlowGrid> | ReturnType<typeof useFlowGridPrototype>;
 
 interface FlowGridProps {
   grid: FlowGridApi;
@@ -33,6 +35,8 @@ interface FlowGridProps {
    * If true, scrolls the grid to the far right on mount.
    */
   defaultScrollToEnd?: boolean;
+  /** Visual treatment; sharp = full grid borders with square corners */
+  variant?: FlowSheetVariant;
 }
 
 const COLUMN_COLORS: Record<string, string> = {
@@ -49,7 +53,7 @@ function SortableCell({
   id, col, row, content, color, side, onUpdate, onColorChange,
   selected, editing, pendingInput, onClearPendingInput,
   onFocus, onStartEditing, onStopEditing, onNavigate,
-  comment, onContextMenu,
+  comment, onContextMenu, variant,
 }: {
   id: string; col: number; row: number; content: string; color: CellColor;
   side: 'aff' | 'neg';
@@ -60,6 +64,7 @@ function SortableCell({
   onNavigate: (d: 'up' | 'down' | 'left' | 'right') => void;
   comment: string;
   onContextMenu?: (e: React.MouseEvent) => void;
+  variant: FlowSheetVariant;
 }) {
   const {
     attributes, listeners, setNodeRef, transform, transition, isDragging,
@@ -87,7 +92,7 @@ function SortableCell({
       style={style}
       {...restAttributes}
       {...dragListeners}
-      className={`relative ${editing ? '' : 'cursor-grab active:cursor-grabbing'} hover:z-50 ${isDragging ? 'opacity-0 pointer-events-none' : ''} ${selected ? 'z-40' : ''}`}
+      className={`relative ${variant === 'sharp' ? 'border-r border-b border-card-04' : ''} ${editing ? '' : 'cursor-grab active:cursor-grabbing'} hover:z-50 ${isDragging ? 'opacity-0 pointer-events-none' : ''} ${selected ? 'z-40' : ''}`}
       data-cell-id={`${col}:${row}`}
       onContextMenu={onContextMenu}
     >
@@ -105,6 +110,7 @@ function SortableCell({
         onStartEditing={onStartEditing}
         onStopEditing={onStopEditing}
         onNavigate={onNavigate}
+        variant={variant}
       />
       {comment && (
         <div className="absolute top-0 right-0 z-20 group">
@@ -112,7 +118,7 @@ function SortableCell({
           <div 
             className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent/60 shadow-sm pointer-events-none ring-1 ring-background" 
           />
-          <div className={`absolute top-5 w-48 p-2 bg-card border border-card-04 rounded shadow-lg text-xs text-foreground whitespace-pre-wrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 ${col <= 1 ? 'right-auto -left-4' : col >= SPEECH_COLUMNS.length - 1 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}>
+          <div className={`absolute top-5 w-48 p-2 bg-card border border-card-04 ${variant === 'sharp' ? '' : 'rounded'} shadow-lg text-xs text-foreground whitespace-pre-wrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 ${col <= 1 ? 'right-auto -left-4' : col >= SPEECH_COLUMNS.length - 1 ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}>
             {comment}
           </div>
         </div>
@@ -142,11 +148,13 @@ function FlowColumn({
   onStopEditing,
   onNavigate,
   onContextMenu,
+  variant,
 }: {
   dataCol: number;
   label: SpeechColumn;
   side: 'aff' | 'neg';
   rowCount: number;
+  variant: FlowSheetVariant;
   getCellContent: (col: number, row: number) => string;
   getCellColor: (col: number, row: number) => CellColor;
   getCellComment: (col: number, row: number) => string;
@@ -168,14 +176,19 @@ function FlowColumn({
     [dataCol, rowCount]
   );
 
+  const columnBorderClass =
+    variant === 'sharp' ? '' : 'border-r border-card-04 last:border-r-0';
+  const headerBorderClass =
+    variant === 'sharp'
+      ? `border-r border-b border-card-04 ${isFocusedColumn ? 'border-b-2 border-b-accent' : ''}`
+      : `border-b border-card-04 ${isFocusedColumn ? 'border-b-2 border-b-accent' : ''}`;
+
   return (
-    <div className="flex flex-col flex-1 min-w-[100px] border-r border-card-04 last:border-r-0" data-flow-col={dataCol}>
+    <div className={`flex flex-col flex-1 min-w-[100px] ${columnBorderClass}`} data-flow-col={dataCol}>
       {/* Header */}
       <div
         data-column-header={dataCol}
-        className={`sticky top-0 z-10 px-2 py-1.5 text-xs font-semibold text-center border-b border-card-04 bg-card ${COLUMN_COLORS[side]} ${
-          isFocusedColumn ? 'border-b-2 border-b-accent' : ''
-        }`}
+        className={`sticky top-0 z-10 px-2 py-1.5 text-xs font-semibold text-center bg-card ${COLUMN_COLORS[side]} ${headerBorderClass}`}
       >
         {label}
       </div>
@@ -202,6 +215,7 @@ function FlowColumn({
             onNavigate={(d) => onNavigate({ col: dataCol, row: rowIdx }, d)}
             comment={getCellComment(dataCol, rowIdx)}
             onContextMenu={(e) => onContextMenu(e, dataCol, rowIdx)}
+            variant={variant}
           />
         ))}
       </SortableContext>
@@ -291,7 +305,7 @@ function CommentPopover({
   );
 }
 
-export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
+export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default' }: FlowGridProps) {
   const {
     activeFlowId, activeFlow, getCellContent, getCellColor, getCellComment, updateCell, updateCellColor, setCellComment,
     getColumnRowCount, bulkUpdateCells,
@@ -774,8 +788,8 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div ref={containerRef} className="flex-1 overflow-auto min-h-0">
-        <div className="flex min-w-[800px] min-h-full">
+      <div ref={containerRef} className={`flex-1 overflow-auto min-h-0 ${flowSheetRootClass(variant)}`}>
+        <div className={`flex min-w-[800px] min-h-full ${variant === 'sharp' ? 'border-t border-l border-card-04' : ''}`}>
           {flowColumns.map(({ label, dataCol, side }) => (
             <FlowColumn
               key={`${label}-${dataCol}`}
@@ -783,6 +797,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
               label={label}
               side={side}
               rowCount={maxRows}
+              variant={variant}
               getCellContent={getCellContent}
               getCellColor={getCellColor}
               getCellComment={getCellComment}
@@ -820,7 +835,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd }: FlowGridProps) {
           const sideTextColor = side === 'aff' ? 'text-blue-600 dark:text-blue-400' : side === 'neg' ? 'text-red-600 dark:text-red-400' : 'text-foreground';
           return (
             <div
-              className={`pointer-events-none relative min-w-[100px] min-h-[28px] p-1 whitespace-pre-wrap break-words rounded shadow border border-card-04 bg-card ${sideTextColor} ${colorClass}`}
+              className={`pointer-events-none relative min-w-[100px] min-h-[28px] p-1 whitespace-pre-wrap break-words shadow border border-card-04 bg-card ${variant === 'sharp' ? '' : 'rounded'} ${sideTextColor} ${colorClass}`}
               style={{ fontSize: 'var(--cell-font-size, 14px)' }}
             >
               <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(content) }} />

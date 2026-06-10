@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { Flow } from '../db/types';
+import type { FlowSheetVariant } from './flowSheetVariant';
 
 interface FlowTabsProps {
   flows: Flow[];
@@ -9,6 +10,7 @@ interface FlowTabsProps {
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
   onReorder: (flows: Flow[]) => void;
+  variant?: FlowSheetVariant;
 }
 
 export default function FlowTabs({
@@ -19,7 +21,9 @@ export default function FlowTabs({
   onRename,
   onDelete,
   onReorder,
+  variant = 'default',
 }: FlowTabsProps) {
+  const isSharp = variant === 'sharp';
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [dragId, setDragId] = useState<string | null>(null);
@@ -103,10 +107,14 @@ export default function FlowTabs({
           onDragStart={(e) => handleDragStart(e, flow.id)}
           onDragOver={handleDragOver}
           onDrop={(e) => handleDrop(e, flow.id)}
-          className={`px-3 py-1 cursor-pointer rounded-t border-t border-x text-sm transition-colors select-none ${
+          className={`px-3 py-1 cursor-pointer text-sm transition-colors select-none ${
+            isSharp
+              ? 'border border-card-04 -mb-px'
+              : 'rounded-t border-t border-x'
+          } ${
             activeFlowId === flow.id
-              ? 'bg-background border-card-04 font-medium text-foreground -mb-px pb-1.5'
-              : 'bg-card-01 border-transparent text-foreground/70 hover:bg-card-02 hover:text-foreground'
+              ? `bg-background font-medium text-foreground ${isSharp ? 'border-b-background pb-1' : 'border-card-04 -mb-px pb-1.5'}`
+              : `bg-card-01 text-foreground/70 hover:bg-card-02 hover:text-foreground ${isSharp ? '' : 'border-transparent'}`
           } ${dragId === flow.id ? 'opacity-50' : ''}`}
           onClick={() => onSelect(flow.id)}
           onDoubleClick={() => startRename(flow)}
@@ -120,7 +128,7 @@ export default function FlowTabs({
               onChange={(e) => setEditValue(e.target.value)}
               onBlur={() => commitRename(flow.id)}
               onKeyDown={(e) => handleKeyDown(e, flow.id)}
-              className="bg-background border border-accent rounded px-1 min-w-[80px] focus:outline-none text-foreground text-sm"
+              className={`bg-background border border-accent px-1 min-w-[80px] focus:outline-none text-foreground text-sm ${isSharp ? '' : 'rounded'}`}
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
@@ -137,7 +145,7 @@ export default function FlowTabs({
       ))}
       <button
         onClick={onAdd}
-        className="px-3 py-1 text-foreground/60 hover:bg-card-02 hover:text-foreground rounded transition-colors text-sm font-semibold shrink-0"
+        className={`px-3 py-1 text-foreground/60 hover:bg-card-02 hover:text-foreground transition-colors text-sm font-semibold shrink-0 ${isSharp ? 'border border-card-04' : 'rounded'}`}
         title="Add new flow tab"
       >
         +
@@ -145,7 +153,7 @@ export default function FlowTabs({
 
       {deleteConfirm && (
         <div
-          className="fixed z-50 bg-card border border-card-04 rounded shadow-lg py-1 min-w-[120px]"
+          className={`fixed z-50 bg-card border border-card-04 shadow-lg py-1 min-w-[120px] ${isSharp ? '' : 'rounded'}`}
           style={{
             left: deleteConfirm.rect.left + deleteConfirm.rect.width / 2,
             top: deleteConfirm.rect.top - 4,
