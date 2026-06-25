@@ -32,7 +32,7 @@ function RoundPageInner() {
   const [round, setRound] = useState<Round | null>(null);
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const grid = useFlowGrid(id, round);
-  const { variant: flowSheetVariant } = useFlowSheetVariant();
+  const { variant: flowSheetVariant, hideSidebar } = useFlowSheetVariant();
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [showNewFlow, setShowNewFlow] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -131,15 +131,17 @@ function RoundPageInner() {
     <Layout breadcrumbs={breadcrumbs}>
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <Sidebar
-          tournamentId={tournament?.id}
-          activeRoundId={id}
-          activeFlowId={grid.activeFlowId}
-          activeRoundFlows={grid.flows}
-          onFlowClick={(_, flowId) => grid.selectFlow(flowId)}
-          collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed((v) => !v)}
-        />
+        {!hideSidebar && (
+          <Sidebar
+            tournamentId={tournament?.id}
+            activeRoundId={id}
+            activeFlowId={grid.activeFlowId}
+            activeRoundFlows={grid.flows}
+            onFlowClick={(_, flowId) => grid.selectFlow(flowId)}
+            collapsed={sidebarCollapsed}
+            onToggle={() => setSidebarCollapsed((v) => !v)}
+          />
+        )}
 
         {/* Main content */}
         <div className="flex flex-col flex-1 overflow-hidden min-w-0">

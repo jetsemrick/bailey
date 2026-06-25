@@ -28,7 +28,12 @@ interface SettingsProps {
 export default function Settings({ isOpen, onOpenChange }: SettingsProps) {
   const { profile, isAdmin, requestPasswordReset, refreshProfile } = useAuth();
   const { macros: serverMacros, loading: macrosLoading, save, reset } = useKeyboardMacrosContext();
-  const { variant: flowSheetVariant, setVariant: setFlowSheetVariant } = useFlowSheetVariant();
+  const {
+    variant: flowSheetVariant,
+    setVariant: setFlowSheetVariant,
+    hideSidebar,
+    setHideSidebar,
+  } = useFlowSheetVariant();
   const [activeTab, setActiveTab] = useState<SettingsTab>('display');
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
   const [macros, setMacros] = useState<KeyboardMacro[]>([]);
@@ -251,6 +256,23 @@ export default function Settings({ isOpen, onOpenChange }: SettingsProps) {
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="flex items-center justify-between gap-4 rounded-lg border border-card-04 bg-card-01 px-3 py-2">
+                      <span>
+                        <span className="block text-sm font-medium">Hide Flow Sheet Sidebar</span>
+                        <span className="block text-xs text-foreground/60 mt-0.5">
+                          Gives active flow sheets the full window width. Re-enable this setting to show the round tree again.
+                        </span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={hideSidebar}
+                        onChange={(event) => setHideSidebar(event.target.checked)}
+                        className="h-4 w-4 accent-accent"
+                      />
+                    </label>
                   </div>
                 </div>
               )}
