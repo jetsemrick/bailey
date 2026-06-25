@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 import type { CellColor } from '../db/types';
+import type { FlowSheetVariant } from './flowSheetVariant';
 
 export const COLOR_BG: Record<string, string> = {
   yellow: 'bg-yellow-100/60 dark:bg-yellow-900/20',
@@ -25,6 +26,8 @@ interface CellProps {
   pendingInput?: string | null;
   onClearPendingInput?: () => void;
   onNavigate?: (direction: 'up' | 'down' | 'left' | 'right') => void;
+  /** Visual treatment for the flow grid; sharp = spreadsheet-style square cells */
+  variant?: FlowSheetVariant;
 }
 
 /** Sanitize HTML to only allow b, u, mark tags */
@@ -66,6 +69,7 @@ export default function Cell({
   pendingInput,
   onClearPendingInput,
   onNavigate,
+  variant = 'default',
 }: CellProps) {
   const divRef = useRef<HTMLDivElement>(null);
 
@@ -192,7 +196,14 @@ export default function Cell({
   // Sanitize content on load to prevent XSS from imported/database content
   const sanitizedContent = sanitizeHtml(content);
 
-  const selectedClass = selected ? 'border border-accent/25 bg-card-01 rounded-sm' : 'border border-transparent';
+  const selectedClass =
+    variant === 'sharp'
+      ? selected
+        ? 'bg-card-01 shadow-[inset_0_0_0_2px_rgb(var(--accent))]'
+        : ''
+      : selected
+        ? 'border border-accent/25 bg-card-01 rounded-sm'
+        : 'border border-transparent';
   const editingBgClass = editing ? 'bg-card-01' : '';
 
   return (

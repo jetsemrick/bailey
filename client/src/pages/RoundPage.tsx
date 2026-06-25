@@ -9,6 +9,7 @@ import RoundAnalytics from '../components/RoundAnalytics';
 import DecisionView from '../components/DecisionView';
 import NewFlowDialog from '../components/NewFlowDialog';
 import { useFlowGrid } from '../hooks/useFlowGrid';
+import { useFlowSheetVariant } from '../contexts/FlowSheetVariantContext';
 import { RoundTimerProvider, useRoundTimer } from '../contexts/RoundTimerContext';
 import { normalizeTimerPreset } from '../lib/timerPreset';
 import * as api from '../db/api';
@@ -31,6 +32,7 @@ function RoundPageInner() {
   const [round, setRound] = useState<Round | null>(null);
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const grid = useFlowGrid(id, round);
+  const { variant: flowSheetVariant } = useFlowSheetVariant();
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [showNewFlow, setShowNewFlow] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -205,9 +207,10 @@ function RoundPageInner() {
                     cellsRevision={grid.cellsRevision}
                     visibleFlowIds={decisionVisibleFlowIds}
                     onVisibleFlowIdsChange={setDecisionVisibleFlowIds}
+                    variant={flowSheetVariant}
                   />
                 ) : (
-                  <FlowGrid grid={grid} defaultScrollToEnd />
+                  <FlowGrid grid={grid} defaultScrollToEnd variant={flowSheetVariant} />
                 )}
               </div>
               <div className="flex flex-col w-[380px] shrink-0 min-h-0 bg-background">
@@ -215,7 +218,7 @@ function RoundPageInner() {
               </div>
             </div>
           ) : viewMode === 'flow' ? (
-            <FlowGrid grid={grid} />
+            <FlowGrid grid={grid} variant={flowSheetVariant} />
           ) : grid.activeFlow ? (
             <FlowAnalytics
               flow={grid.activeFlow}
@@ -237,6 +240,7 @@ function RoundPageInner() {
             onRename={grid.renameFlow}
             onDelete={grid.removeFlow}
             onReorder={grid.reorderFlows}
+            variant={flowSheetVariant}
           />
 
           {/* Error bar */}

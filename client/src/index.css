@@ -71,4 +71,9 @@
   mark[data-color="blue"] {
     background-color: rgba(96, 165, 250, 0.4);
   }
+
+  /* Sharp-edge flow sheet: spreadsheet grid, square highlights */
+  .flow-sheet-sharp [contenteditable] mark {
+    border-radius: 0;
+  }
 }

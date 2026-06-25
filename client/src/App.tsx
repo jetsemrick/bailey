@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
+import { FlowSheetVariantProvider } from './contexts/FlowSheetVariantContext';
 import AuthGuard from './auth/AuthGuard';
 import AdminGuard from './auth/AdminGuard';
 import LoginPage from './auth/LoginPage';
@@ -14,6 +15,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <FlowSheetVariantProvider>
         <Routes>
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/login" element={<LoginPage />} />
@@ -51,6 +53,7 @@ export default function App() {
             }
           />
         </Routes>
+        </FlowSheetVariantProvider>
       </AuthProvider>
     </BrowserRouter>
   );
