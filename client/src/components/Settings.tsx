@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import * as api from '../db/api';
@@ -41,6 +41,7 @@ export default function Settings({ isOpen, onOpenChange }: SettingsProps) {
   const [defaultTeamCode, setDefaultTeamCode] = useState('');
   const [profileSubmitting, setProfileSubmitting] = useState(false);
   const [profileNotice, setProfileNotice] = useState<string | null>(null);
+  const prevIsOpen = useRef(false);
 
   useEffect(() => {
     const saved = localStorage.getItem(FONT_SIZE_KEY);
@@ -63,8 +64,14 @@ export default function Settings({ isOpen, onOpenChange }: SettingsProps) {
   };
 
   useEffect(() => {
+    if (isOpen && !prevIsOpen.current) {
+      setActiveTab('display');
+    }
+    prevIsOpen.current = isOpen;
+  }, [isOpen]);
+
+  useEffect(() => {
     if (!isOpen) return;
-    setActiveTab('display');
     setMacros(serverMacros);
     setSavedMacros(serverMacros);
     setMacroErrors([]);
