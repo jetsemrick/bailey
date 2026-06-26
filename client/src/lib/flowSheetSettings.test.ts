@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import {
+  DEFAULT_FLOW_SHEET_HIDE_SIDEBAR,
   DEFAULT_FLOW_SHEET_VARIANT,
+  FLOW_SHEET_HIDE_SIDEBAR_KEY,
   parseFlowSheetVariant,
+  parseFlowSheetHideSidebar,
+  readFlowSheetHideSidebar,
   readFlowSheetVariant,
+  writeFlowSheetHideSidebar,
   writeFlowSheetVariant,
   FLOW_SHEET_VARIANT_KEY,
 } from './flowSheetSettings';
@@ -31,5 +36,24 @@ describe('flowSheetSettings', () => {
 
     writeFlowSheetVariant('default');
     expect(readFlowSheetVariant()).toBe('default');
+  });
+
+  test('parseFlowSheetHideSidebar accepts true and defaults otherwise', () => {
+    expect(parseFlowSheetHideSidebar('true')).toBe(true);
+    expect(parseFlowSheetHideSidebar('false')).toBe(DEFAULT_FLOW_SHEET_HIDE_SIDEBAR);
+    expect(parseFlowSheetHideSidebar(null)).toBe(DEFAULT_FLOW_SHEET_HIDE_SIDEBAR);
+    expect(parseFlowSheetHideSidebar('invalid')).toBe(false);
+  });
+
+  test('read and write hide sidebar round-trip in localStorage', () => {
+    if (typeof localStorage === 'undefined') return;
+    expect(readFlowSheetHideSidebar()).toBe(false);
+
+    writeFlowSheetHideSidebar(true);
+    expect(localStorage.getItem(FLOW_SHEET_HIDE_SIDEBAR_KEY)).toBe('true');
+    expect(readFlowSheetHideSidebar()).toBe(true);
+
+    writeFlowSheetHideSidebar(false);
+    expect(readFlowSheetHideSidebar()).toBe(false);
   });
 });
