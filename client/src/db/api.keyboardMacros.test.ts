@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { fromMock, getUserMock } = vi.hoisted(() => ({
+const { fromMock, getSessionMock, getUserMock } = vi.hoisted(() => ({
   fromMock: vi.fn(),
+  getSessionMock: vi.fn(),
   getUserMock: vi.fn(),
 }));
 
 vi.mock('./supabase', () => ({
   supabase: {
-    auth: { getUser: getUserMock },
+    auth: { getSession: getSessionMock, getUser: getUserMock },
     from: (table: string) => fromMock(table),
   },
 }));
@@ -17,12 +18,15 @@ import { DEFAULT_KEYBOARD_MACROS } from '../keyboardMacros';
 
 describe('fetchKeyboardMacros', () => {
   beforeEach(() => {
+    getSessionMock.mockReset();
     getUserMock.mockReset();
     fromMock.mockReset();
   });
 
   test('returns defaults when no row exists', async () => {
-    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
     const selectMock = vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
         maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
@@ -40,7 +44,9 @@ describe('fetchKeyboardMacros', () => {
     const stored = [
       { id: 'm1', name: 'Custom', shortcut: 'Ctrl+K', actions: ['next_flow_sheet'] },
     ];
-    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
     const selectMock = vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
         maybeSingle: vi.fn().mockResolvedValue({ data: { macros: stored }, error: null }),
@@ -54,7 +60,7 @@ describe('fetchKeyboardMacros', () => {
   });
 
   test('returns defaults when not authenticated', async () => {
-    getUserMock.mockResolvedValue({ data: { user: null } });
+    getSessionMock.mockResolvedValue({ data: { session: null } });
 
     await expect(fetchKeyboardMacros()).rejects.toThrow('Not authenticated');
   });
@@ -62,13 +68,16 @@ describe('fetchKeyboardMacros', () => {
 
 describe('saveKeyboardMacrosRemote', () => {
   beforeEach(() => {
+    getSessionMock.mockReset();
     getUserMock.mockReset();
     fromMock.mockReset();
   });
 
   test('upserts macros for authenticated user', async () => {
     const macros = [...DEFAULT_KEYBOARD_MACROS];
-    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
     const upsertMock = vi.fn().mockResolvedValue({ error: null });
     fromMock.mockReturnValue({ upsert: upsertMock });
 
@@ -78,10 +87,11 @@ describe('saveKeyboardMacrosRemote', () => {
       { user_id: 'user-1', macros },
       { onConflict: 'user_id' }
     );
+    expect(getUserMock).not.toHaveBeenCalled();
   });
 
   test('throws when not authenticated', async () => {
-    getUserMock.mockResolvedValue({ data: { user: null } });
+    getSessionMock.mockResolvedValue({ data: { session: null } });
 
     await expect(saveKeyboardMacrosRemote(DEFAULT_KEYBOARD_MACROS)).rejects.toThrow(
       'Not authenticated'
