@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { fromMock, getUserMock, rpcMock } = vi.hoisted(() => ({
+const { fromMock, getSessionMock, getUserMock, rpcMock } = vi.hoisted(() => ({
   fromMock: vi.fn(),
+  getSessionMock: vi.fn(),
   getUserMock: vi.fn(),
   rpcMock: vi.fn(),
 }));
@@ -11,16 +12,19 @@ vi.mock('./supabase', () => ({
     from: fromMock,
     rpc: rpcMock,
     auth: {
+      getSession: getSessionMock,
       getUser: getUserMock,
     },
   },
 }));
 
 import {
+  createTournament,
   listAdminUserSummaries,
   normalizeImportedFlowCells,
   toError,
   updateCurrentProfile,
+  upsertCells,
 } from './api';
 
 describe('toError', () => {
@@ -143,6 +147,7 @@ describe('normalizeImportedFlowCells', () => {
 describe('updateCurrentProfile', () => {
   beforeEach(() => {
     fromMock.mockReset();
+    getSessionMock.mockReset();
     getUserMock.mockReset();
   });
 
@@ -164,7 +169,9 @@ describe('updateCurrentProfile', () => {
     const eqMock = vi.fn(() => ({ select: selectMock }));
     const updateMock = vi.fn(() => ({ eq: eqMock }));
     fromMock.mockReturnValue({ update: updateMock });
-    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
 
     const profile = await updateCurrentProfile({
       first_name: 'Pat',
@@ -179,10 +186,77 @@ describe('updateCurrentProfile', () => {
       default_team_code: 'Kansas PS',
     });
     expect(eqMock).toHaveBeenCalledWith('id', 'user-1');
+    expect(getUserMock).not.toHaveBeenCalled();
     expect(profile).toMatchObject({
       first_name: 'Pat',
       last_name: 'Smith',
       default_team_code: 'Kansas PS',
     });
+  });
+});
+
+describe('authenticated writes', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+    getSessionMock.mockReset();
+    getUserMock.mockReset();
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
+  });
+
+  test('creates a tournament using the local session user', async () => {
+    const singleMock = vi.fn().mockResolvedValue({
+      data: { id: 'tournament-1', user_id: 'user-1', name: 'Nationals' },
+      error: null,
+    });
+    const selectMock = vi.fn(() => ({ single: singleMock }));
+    const insertMock = vi.fn(() => ({ select: selectMock }));
+    fromMock.mockReturnValue({ insert: insertMock });
+
+    const tournament = await createTournament({ name: 'Nationals' });
+
+    expect(getSessionMock).toHaveBeenCalledOnce();
+    expect(getUserMock).not.toHaveBeenCalled();
+    expect(fromMock).toHaveBeenCalledOnce();
+    expect(fromMock).toHaveBeenCalledWith('tournaments');
+    expect(insertMock).toHaveBeenCalledWith({
+      user_id: 'user-1',
+      name: 'Nationals',
+    });
+    expect(tournament).toMatchObject({ id: 'tournament-1', name: 'Nationals' });
+  });
+
+  test('upserts autosaved cells with one PostgREST write and no remote user lookup', async () => {
+    const upsertMock = vi.fn().mockResolvedValue({ error: null });
+    fromMock.mockReturnValue({ upsert: upsertMock });
+
+    await upsertCells('flow-1', [
+      {
+        column_index: 0,
+        row_index: 1,
+        content: 'Extend the solvency argument',
+      },
+    ]);
+
+    expect(getSessionMock).toHaveBeenCalledOnce();
+    expect(getUserMock).not.toHaveBeenCalled();
+    expect(fromMock).toHaveBeenCalledOnce();
+    expect(fromMock).toHaveBeenCalledWith('flow_cells');
+    expect(upsertMock).toHaveBeenCalledOnce();
+    expect(upsertMock).toHaveBeenCalledWith(
+      [
+        {
+          user_id: 'user-1',
+          flow_id: 'flow-1',
+          column_index: 0,
+          row_index: 1,
+          content: 'Extend the solvency argument',
+          color: null,
+          comment: '',
+        },
+      ],
+      { onConflict: 'flow_id,column_index,row_index' }
+    );
   });
 });

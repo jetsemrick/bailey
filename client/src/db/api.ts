@@ -18,9 +18,9 @@ import { DEFAULT_KEYBOARD_MACROS } from '../keyboardMacros';
 // ── helpers ──────────────────────────────────────────────────
 
 async function uid(): Promise<string> {
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error('Not authenticated');
-  return data.user.id;
+  const { data } = await supabase.auth.getSession();
+  if (!data.session?.user) throw new Error('Not authenticated');
+  return data.session.user.id;
 }
 
 function toCount(value: number | string | null | undefined): number {
