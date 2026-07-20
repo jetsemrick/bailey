@@ -207,6 +207,7 @@ function RoundPageInner() {
                   <DecisionView
                     flows={grid.flows}
                     cellsRevision={grid.cellsRevision}
+                    flushPending={grid.saveNow}
                     visibleFlowIds={decisionVisibleFlowIds}
                     onVisibleFlowIdsChange={setDecisionVisibleFlowIds}
                     variant={flowSheetVariant}

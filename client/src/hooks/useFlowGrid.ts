@@ -13,7 +13,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const [flows, setFlows] = useState<Flow[]>([]);
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [cells, setCells] = useState<Map<string, FlowCell>>(new Map());
-  /** Increments when any flow cells change (DEB-27: DecisionView refetch). */
+  /** Increments after dirty cells are successfully persisted (DEB-59: DecisionView refetch). */
   const [cellsRevision, setCellsRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,16 +96,24 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   }, [activeFlowId, loadCells]);
 
   // -- Flush dirty cells to Supabase --
-  const flush = useCallback(async () => {
-    if (!activeFlowId || dirtyRef.current.size === 0) return;
+  // DEB-59: bump cellsRevision only after a successful write so DecisionView
+  // does not refetch while debounced dirty cells are still in memory.
+  const flushFlowCells = useCallback(async (flowId: string) => {
+    if (dirtyRef.current.size === 0) return;
     const toSave = Array.from(dirtyRef.current.values());
     dirtyRef.current.clear();
     try {
-      await api.upsertCells(activeFlowId, toSave);
+      await api.upsertCells(flowId, toSave);
+      bumpCellsRevision();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save cells');
     }
-  }, [activeFlowId]);
+  }, [bumpCellsRevision]);
+
+  const flush = useCallback(async () => {
+    if (!activeFlowId) return;
+    await flushFlowCells(activeFlowId);
+  }, [activeFlowId, flushFlowCells]);
 
   const scheduleSave = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -133,18 +141,11 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const prevFlowIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (prevFlowIdRef.current && prevFlowIdRef.current !== activeFlowId) {
-      // Flush dirty cells from the previous flow
-      if (dirtyRef.current.size > 0) {
-        const prevId = prevFlowIdRef.current;
-        const toSave = Array.from(dirtyRef.current.values());
-        dirtyRef.current.clear();
-        api.upsertCells(prevId, toSave).catch((err) => {
-          setError(err instanceof Error ? err.message : 'Failed to save cells');
-        });
-      }
+      const prevId = prevFlowIdRef.current;
+      void flushFlowCells(prevId);
     }
     prevFlowIdRef.current = activeFlowId;
-  }, [activeFlowId]);
+  }, [activeFlowId, flushFlowCells]);
 
   // Manual save (Ctrl+S)
   const saveNow = useCallback(async () => {
@@ -202,9 +203,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       });
 
       scheduleSave();
-      bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave, bumpCellsRevision]
+    [activeFlowId, scheduleSave]
   );
 
   const updateCell = useCallback(
@@ -235,9 +235,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       });
 
       scheduleSave();
-      bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave, bumpCellsRevision]
+    [activeFlowId, scheduleSave]
   );
 
   const updateCellColor = useCallback(
@@ -281,9 +280,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
         return next;
       });
       scheduleSave();
-      bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave, bumpCellsRevision]
+    [activeFlowId, scheduleSave]
   );
 
   // -- Row count per column (dynamic, only counts non-empty cells) --

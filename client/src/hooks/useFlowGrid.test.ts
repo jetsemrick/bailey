@@ -207,4 +207,54 @@ describe('useFlowGrid', () => {
     expect(grid.activeFlowId).toBe('flow-b');
     expect(grid.getCellContent(0, 0)).toBe('latest tab cell');
   });
+
+  test('DEB-59: does not bump cellsRevision on edit before flush', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    let grid = renderHook();
+    grid = await flushAndRender();
+    expect(grid.cellsRevision).toBe(0);
+
+    grid.updateCell(0, 0, 'typed while debounce pending');
+    grid = renderHook();
+    expect(grid.getCellContent(0, 0)).toBe('typed while debounce pending');
+    expect(grid.cellsRevision).toBe(0);
+    expect(apiMock.upsertCells).not.toHaveBeenCalled();
+  });
+
+  test('DEB-59: bumps cellsRevision only after successful saveNow flush', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(5, 0, '2NR content');
+    grid = renderHook();
+    expect(grid.cellsRevision).toBe(0);
+
+    await grid.saveNow();
+    grid = await flushAndRender();
+
+    expect(apiMock.upsertCells).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({
+        column_index: 5,
+        row_index: 0,
+        content: '2NR content',
+      }),
+    ]);
+    expect(grid.cellsRevision).toBe(1);
+  });
+
+  test('DEB-59: failed flush does not bump cellsRevision', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    apiMock.upsertCells.mockRejectedValueOnce(new Error('network down'));
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, 'will fail to save');
+    grid = renderHook();
+    await grid.saveNow();
+    grid = await flushAndRender();
+
+    expect(grid.cellsRevision).toBe(0);
+    expect(grid.error).toBe('network down');
+  });
 });

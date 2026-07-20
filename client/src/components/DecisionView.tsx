@@ -9,10 +9,31 @@ const DECISION_COLUMNS = [
   { label: '2AR', colIndex: SPEECH_COLUMNS.indexOf('2AR'), side: 'aff' as const },
 ];
 
+/** Flush pending autosaves, then load cells for Decision view (DEB-59). */
+export async function loadDecisionCells(
+  flows: Flow[],
+  listCells: (flowId: string) => Promise<FlowCell[]> = api.listCells,
+  flushPending?: () => Promise<void>
+): Promise<Map<string, Map<string, FlowCell>>> {
+  await flushPending?.();
+  const newCellsMap = new Map<string, Map<string, FlowCell>>();
+  await Promise.all(
+    flows.map(async (f) => {
+      const cells = await listCells(f.id);
+      const cellMap = new Map<string, FlowCell>();
+      cells.forEach((c) => cellMap.set(`${c.column_index}:${c.row_index}`, c));
+      newCellsMap.set(f.id, cellMap);
+    })
+  );
+  return newCellsMap;
+}
+
 interface DecisionViewProps {
   flows: Flow[];
-  /** Bumps when flow grid cells change anywhere (DEB-27). */
+  /** Bumps after dirty cells are persisted (DEB-59). */
   cellsRevision: number;
+  /** Flush debounced dirty cells before reading from the DB (DEB-59). */
+  flushPending?: () => Promise<void>;
   /** Lifted to RoundPage so closing sheets survives Flow / Decision tab switches. */
   visibleFlowIds: Set<string>;
   onVisibleFlowIdsChange: Dispatch<SetStateAction<Set<string>>>;
@@ -22,6 +43,7 @@ interface DecisionViewProps {
 export default function DecisionView({
   flows,
   cellsRevision,
+  flushPending,
   visibleFlowIds,
   onVisibleFlowIdsChange,
   variant = 'default',
@@ -30,6 +52,8 @@ export default function DecisionView({
   const [loading, setLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(0);
+  const flushPendingRef = useRef(flushPending);
+  flushPendingRef.current = flushPending;
 
   // Track container height to fill viewport with rows
   useEffect(() => {
@@ -42,26 +66,19 @@ export default function DecisionView({
     return () => ro.disconnect();
   }, []);
 
-  // Fetch cells for all flows
+  // Fetch cells for all flows — only after pending autosaves land (DEB-59)
   useEffect(() => {
     let mounted = true;
     const fetchData = async () => {
       if (flows.length === 0) {
-        setLoading(false);
+        if (mounted) setLoading(false);
         return;
       }
-      
+
       try {
-        const newCellsMap = new Map<string, Map<string, FlowCell>>();
-        await Promise.all(
-          flows.map(async (f) => {
-            const cells = await api.listCells(f.id);
-            const cellMap = new Map<string, FlowCell>();
-            cells.forEach((c) => cellMap.set(`${c.column_index}:${c.row_index}`, c));
-            newCellsMap.set(f.id, cellMap);
-          })
+        const newCellsMap = await loadDecisionCells(flows, api.listCells, () =>
+          flushPendingRef.current?.() ?? Promise.resolve()
         );
-        
         if (mounted) {
           setCellsByFlow(newCellsMap);
           setLoading(false);
