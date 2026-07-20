@@ -257,4 +257,35 @@ describe('useFlowGrid', () => {
     expect(grid.cellsRevision).toBe(0);
     expect(grid.error).toBe('network down');
   });
+
+  test('DEB-59: saveNow awaits an in-flight debounce flush', async () => {
+    vi.useFakeTimers();
+    apiMock.listCells.mockResolvedValue([]);
+    const upsert = deferred<void>();
+    apiMock.upsertCells.mockReturnValueOnce(upsert.promise);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+    grid.updateCell(0, 0, 'pending write');
+    grid = renderHook();
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+
+    let saveDone = false;
+    const savePromise = grid.saveNow().then(() => {
+      saveDone = true;
+    });
+    await Promise.resolve();
+    expect(saveDone).toBe(false);
+
+    upsert.resolve();
+    await savePromise;
+    grid = await flushAndRender();
+
+    expect(saveDone).toBe(true);
+    expect(grid.cellsRevision).toBe(1);
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
 });

@@ -32,6 +32,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   // Dirty cells awaiting save
   const dirtyRef = useRef<Map<string, { column_index: number; row_index: number; content: string; color: CellColor; comment: string }>>(new Map());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** In-flight upsert so DecisionView can await a flush that already cleared dirtyRef (DEB-59). */
+  const flushInFlightRef = useRef<Promise<void> | null>(null);
 
   // -- Load flows for the round --
   const loadFlows = useCallback(async () => {
@@ -99,19 +101,33 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   // DEB-59: bump cellsRevision only after a successful write so DecisionView
   // does not refetch while debounced dirty cells are still in memory.
   const flushFlowCells = useCallback(async (flowId: string) => {
-    if (dirtyRef.current.size === 0) return;
+    if (dirtyRef.current.size === 0) {
+      if (flushInFlightRef.current) await flushInFlightRef.current;
+      return;
+    }
     const toSave = Array.from(dirtyRef.current.values());
     dirtyRef.current.clear();
+    const write = (async () => {
+      try {
+        await api.upsertCells(flowId, toSave);
+        bumpCellsRevision();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to save cells');
+      }
+    })();
+    flushInFlightRef.current = write;
     try {
-      await api.upsertCells(flowId, toSave);
-      bumpCellsRevision();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save cells');
+      await write;
+    } finally {
+      if (flushInFlightRef.current === write) flushInFlightRef.current = null;
     }
   }, [bumpCellsRevision]);
 
   const flush = useCallback(async () => {
-    if (!activeFlowId) return;
+    if (!activeFlowId) {
+      if (flushInFlightRef.current) await flushInFlightRef.current;
+      return;
+    }
     await flushFlowCells(activeFlowId);
   }, [activeFlowId, flushFlowCells]);
 
@@ -147,7 +163,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     prevFlowIdRef.current = activeFlowId;
   }, [activeFlowId, flushFlowCells]);
 
-  // Manual save (Ctrl+S)
+  // Manual save (Ctrl+S) / DecisionView pre-fetch (DEB-59)
   const saveNow = useCallback(async () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     await flush();
