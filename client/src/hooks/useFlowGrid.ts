@@ -29,22 +29,38 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     writeStoredActiveFlowId(roundId, activeFlowId);
   }, [roundId, activeFlowId]);
 
-  // Dirty cells awaiting save
+  // Dirty cells awaiting save (per flow so tab switches cannot mis-attribute restores)
   type DirtyCell = { column_index: number; row_index: number; content: string; color: CellColor; comment: string };
-  const dirtyRef = useRef<Map<string, DirtyCell>>(new Map());
+  const dirtyByFlowRef = useRef<Map<string, Map<string, DirtyCell>>>(new Map());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeFlowIdRef = useRef<string | null>(activeFlowId);
   activeFlowIdRef.current = activeFlowId;
+  /** Serializes upserts so a failed older snapshot cannot restore over a newer write (DEB-58). */
+  const flushInFlightRef = useRef<Promise<void> | null>(null);
+
+  const dirtyMapFor = useCallback((flowId: string) => {
+    let map = dirtyByFlowRef.current.get(flowId);
+    if (!map) {
+      map = new Map();
+      dirtyByFlowRef.current.set(flowId, map);
+    }
+    return map;
+  }, []);
 
   /** DEB-58: re-queue failed writes without clobbering newer edits for the same cell. */
-  const restoreDirtyCells = useCallback((toSave: DirtyCell[]) => {
+  const restoreDirtyCells = useCallback((flowId: string, toSave: DirtyCell[]) => {
+    const map = dirtyMapFor(flowId);
     for (const cell of toSave) {
       const key = `${cell.column_index}:${cell.row_index}`;
-      if (!dirtyRef.current.has(key)) {
-        dirtyRef.current.set(key, cell);
+      if (!map.has(key)) {
+        map.set(key, cell);
       }
     }
-  }, []);
+  }, [dirtyMapFor]);
+
+  const markDirty = useCallback((flowId: string, key: string, cell: DirtyCell) => {
+    dirtyMapFor(flowId).set(key, cell);
+  }, [dirtyMapFor]);
 
   // -- Load flows for the round --
   const loadFlows = useCallback(async () => {
@@ -109,25 +125,50 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   }, [activeFlowId, loadCells]);
 
   // -- Flush dirty cells to Supabase --
-  const flush = useCallback(async () => {
-    const flowId = activeFlowIdRef.current;
-    if (!flowId || dirtyRef.current.size === 0) return;
-    const toSave = Array.from(dirtyRef.current.values());
-    dirtyRef.current.clear();
-    try {
-      await api.upsertCells(flowId, toSave);
-    } catch (err) {
-      // DEB-58: restore dirty cells so autosave can retry (keep newer edits if present)
-      if (activeFlowIdRef.current === flowId) {
-        restoreDirtyCells(toSave);
-        if (timerRef.current) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => {
-          void flush();
-        }, DEBOUNCE_MS);
+  const flushFlowCells = useCallback(async (flowId: string) => {
+    if (flushInFlightRef.current) await flushInFlightRef.current;
+
+    const dirty = dirtyByFlowRef.current.get(flowId);
+    if (!dirty || dirty.size === 0) return;
+
+    const toSave = Array.from(dirty.values());
+    dirty.clear();
+
+    const write = (async () => {
+      try {
+        await api.upsertCells(flowId, toSave);
+        setError(null);
+      } catch (err) {
+        // DEB-58: restore into this flow's dirty map; newer edits for the same key win
+        restoreDirtyCells(flowId, toSave);
+        setError(err instanceof Error ? err.message : 'Failed to save cells');
       }
-      setError(err instanceof Error ? err.message : 'Failed to save cells');
+    })();
+
+    flushInFlightRef.current = write;
+    try {
+      await write;
+    } finally {
+      if (flushInFlightRef.current === write) flushInFlightRef.current = null;
+    }
+
+    // Retry if restore (or concurrent edits) left dirty cells for this flow
+    if ((dirtyByFlowRef.current.get(flowId)?.size ?? 0) > 0) {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        void flushFlowCells(flowId);
+      }, DEBOUNCE_MS);
     }
   }, [restoreDirtyCells]);
+
+  const flush = useCallback(async () => {
+    const flowId = activeFlowIdRef.current;
+    if (!flowId) {
+      if (flushInFlightRef.current) await flushInFlightRef.current;
+      return;
+    }
+    await flushFlowCells(flowId);
+  }, [flushFlowCells]);
 
   const scheduleSave = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -139,12 +180,13 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   // Flush pending changes before page unload
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (dirtyRef.current.size > 0 && activeFlowId) {
-        const toSave = Array.from(dirtyRef.current.values());
-        dirtyRef.current.clear();
-        // Best-effort flush on unload (may not complete for async)
-        api.upsertCells(activeFlowId, toSave).catch(() => {});
-      }
+      if (!activeFlowId) return;
+      const dirty = dirtyByFlowRef.current.get(activeFlowId);
+      if (!dirty || dirty.size === 0) return;
+      const toSave = Array.from(dirty.values());
+      dirty.clear();
+      // Best-effort flush on unload (may not complete for async)
+      api.upsertCells(activeFlowId, toSave).catch(() => {});
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
@@ -157,26 +199,11 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const prevFlowIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (prevFlowIdRef.current && prevFlowIdRef.current !== activeFlowId) {
-      // Flush dirty cells from the previous flow
-      if (dirtyRef.current.size > 0) {
-        const prevId = prevFlowIdRef.current;
-        const toSave = Array.from(dirtyRef.current.values());
-        dirtyRef.current.clear();
-        api.upsertCells(prevId, toSave).catch((err) => {
-          // DEB-58: only re-queue if the user switched back to that flow
-          if (activeFlowIdRef.current === prevId) {
-            restoreDirtyCells(toSave);
-            if (timerRef.current) clearTimeout(timerRef.current);
-            timerRef.current = setTimeout(() => {
-              void flush();
-            }, DEBOUNCE_MS);
-          }
-          setError(err instanceof Error ? err.message : 'Failed to save cells');
-        });
-      }
+      const prevId = prevFlowIdRef.current;
+      void flushFlowCells(prevId);
     }
     prevFlowIdRef.current = activeFlowId;
-  }, [activeFlowId, flush, restoreDirtyCells]);
+  }, [activeFlowId, flushFlowCells]);
 
   // Manual save (Ctrl+S)
   const saveNow = useCallback(async () => {
@@ -229,14 +256,14 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
           updated_at: new Date().toISOString(),
         });
 
-        dirtyRef.current.set(key, { column_index: col, row_index: row, content, color, comment });
+        markDirty(activeFlowId, key, { column_index: col, row_index: row, content, color, comment });
         return next;
       });
 
       scheduleSave();
       bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave, bumpCellsRevision]
+    [activeFlowId, scheduleSave, bumpCellsRevision, markDirty]
   );
 
   const updateCell = useCallback(
@@ -262,14 +289,20 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
         });
 
         // Track dirty cell for auto-save
-        dirtyRef.current.set(key, { column_index: col, row_index: row, content, color: cellColor, comment: existing?.comment ?? '' });
+        markDirty(activeFlowId, key, {
+          column_index: col,
+          row_index: row,
+          content,
+          color: cellColor,
+          comment: existing?.comment ?? '',
+        });
         return next;
       });
 
       scheduleSave();
       bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave, bumpCellsRevision]
+    [activeFlowId, scheduleSave, bumpCellsRevision, markDirty]
   );
 
   const updateCellColor = useCallback(
@@ -302,7 +335,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
             created_at: existing?.created_at ?? new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
-          dirtyRef.current.set(key, {
+          markDirty(activeFlowId, key, {
             column_index: u.col,
             row_index: u.row,
             content: u.content,
@@ -315,7 +348,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       scheduleSave();
       bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave, bumpCellsRevision]
+    [activeFlowId, scheduleSave, bumpCellsRevision, markDirty]
   );
 
   // -- Row count per column (dynamic, only counts non-empty cells) --

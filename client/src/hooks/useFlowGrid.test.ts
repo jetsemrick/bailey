@@ -230,14 +230,14 @@ describe('useFlowGrid', () => {
       expect.objectContaining({ column_index: 0, row_index: 0, content: 'unsaved content' }),
     ]);
 
-    // Debounced retry should re-flush the restored dirty cell
+    // Debounced retry should re-flush the restored dirty cell and clear the error
     await vi.advanceTimersByTimeAsync(500);
     grid = await flushAndRender();
     expect(apiMock.upsertCells).toHaveBeenCalledTimes(2);
     expect(apiMock.upsertCells).toHaveBeenLastCalledWith('flow-a', [
       expect.objectContaining({ column_index: 0, row_index: 0, content: 'unsaved content' }),
     ]);
-    expect(grid.error).toBe('network down');
+    expect(grid.error).toBeNull();
 
     vi.useRealTimers();
   });
@@ -272,5 +272,79 @@ describe('useFlowGrid', () => {
       expect.objectContaining({ column_index: 0, row_index: 0, content: 'second draft' }),
     ]);
     expect(grid.getCellContent(0, 0)).toBe('second draft');
+    expect(grid.error).toBeNull();
+  });
+
+  test('DEB-58: serializes overlapping flushes so stale restore cannot overwrite newer write', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    const firstUpsert = deferred<void>();
+    apiMock.upsertCells
+      .mockReturnValueOnce(firstUpsert.promise)
+      .mockResolvedValueOnce(undefined);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, 'v1');
+    grid = renderHook();
+    const firstSave = grid.saveNow();
+
+    grid.updateCell(0, 0, 'v2');
+    grid = renderHook();
+
+    // Second save waits for the in-flight flush, then persists the newer dirty cell
+    const secondSave = grid.saveNow();
+
+    firstUpsert.reject(new Error('first failed'));
+    await firstSave.catch(() => undefined);
+    await secondSave;
+    grid = await flushAndRender();
+
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(2);
+    expect(apiMock.upsertCells.mock.calls[0][1]).toEqual([
+      expect.objectContaining({ content: 'v1' }),
+    ]);
+    expect(apiMock.upsertCells.mock.calls[1][1]).toEqual([
+      expect.objectContaining({ content: 'v2' }),
+    ]);
+    expect(grid.error).toBeNull();
+  });
+
+  test('DEB-58: failed tab-switch flush keeps dirty on that flow and retries', async () => {
+    vi.useFakeTimers();
+    apiMock.listCells.mockResolvedValue([]);
+    apiMock.upsertCells
+      .mockRejectedValueOnce(new Error('tab switch save failed'))
+      .mockResolvedValue(undefined);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, 'flow-a content');
+    grid = renderHook();
+
+    grid.selectFlow('flow-b');
+    grid = renderHook();
+    // Allow the tab-switch flush promise to settle
+    await Promise.resolve();
+    await Promise.resolve();
+    grid = await flushAndRender();
+    expect(grid.error).toBe('tab switch save failed');
+    expect(apiMock.upsertCells).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({ content: 'flow-a content' }),
+    ]);
+
+    // Retry targets flow-a even while viewing flow-b
+    await vi.advanceTimersByTimeAsync(500);
+    await Promise.resolve();
+    await Promise.resolve();
+    grid = await flushAndRender();
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(2);
+    expect(apiMock.upsertCells).toHaveBeenLastCalledWith('flow-a', [
+      expect.objectContaining({ content: 'flow-a content' }),
+    ]);
+    expect(grid.error).toBeNull();
+
+    vi.useRealTimers();
   });
 });
