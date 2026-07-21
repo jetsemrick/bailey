@@ -105,6 +105,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       if (flushInFlightRef.current) await flushInFlightRef.current;
       return;
     }
+    // Await any prior in-flight upsert before starting a new one (DEB-59)
+    if (flushInFlightRef.current) await flushInFlightRef.current;
     const toSave = Array.from(dirtyRef.current.values());
     dirtyRef.current.clear();
     const write = (async () => {
