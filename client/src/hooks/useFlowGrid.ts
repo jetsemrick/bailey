@@ -32,11 +32,28 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   // Dirty cells awaiting save (per flow so tab switches cannot mis-attribute restores)
   type DirtyCell = { column_index: number; row_index: number; content: string; color: CellColor; comment: string };
   const dirtyByFlowRef = useRef<Map<string, Map<string, DirtyCell>>>(new Map());
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerByFlowRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const activeFlowIdRef = useRef<string | null>(activeFlowId);
   activeFlowIdRef.current = activeFlowId;
   /** Serializes upserts so a failed older snapshot cannot restore over a newer write (DEB-58). */
   const flushInFlightRef = useRef<Promise<void> | null>(null);
+
+  const clearFlowTimer = useCallback((flowId: string) => {
+    const existing = timerByFlowRef.current.get(flowId);
+    if (existing) {
+      clearTimeout(existing);
+      timerByFlowRef.current.delete(flowId);
+    }
+  }, []);
+
+  const armFlowTimer = useCallback((flowId: string, run: () => void) => {
+    clearFlowTimer(flowId);
+    const timer = setTimeout(() => {
+      timerByFlowRef.current.delete(flowId);
+      run();
+    }, DEBOUNCE_MS);
+    timerByFlowRef.current.set(flowId, timer);
+  }, [clearFlowTimer]);
 
   const dirtyMapFor = useCallback((flowId: string) => {
     let map = dirtyByFlowRef.current.get(flowId);
@@ -154,12 +171,11 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
 
     // Retry if restore (or concurrent edits) left dirty cells for this flow
     if ((dirtyByFlowRef.current.get(flowId)?.size ?? 0) > 0) {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => {
+      armFlowTimer(flowId, () => {
         void flushFlowCells(flowId);
-      }, DEBOUNCE_MS);
+      });
     }
-  }, [restoreDirtyCells]);
+  }, [restoreDirtyCells, armFlowTimer]);
 
   const flush = useCallback(async () => {
     const flowId = activeFlowIdRef.current;
@@ -171,11 +187,13 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   }, [flushFlowCells]);
 
   const scheduleSave = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
+    const flowId = activeFlowIdRef.current;
+    if (!flowId) return;
+    // Only debounce this flow — do not cancel retries armed for other flows (DEB-58)
+    armFlowTimer(flowId, () => {
       void flush();
-    }, DEBOUNCE_MS);
-  }, [flush]);
+    });
+  }, [flush, armFlowTimer]);
 
   // Flush pending changes before page unload
   useEffect(() => {
@@ -191,9 +209,16 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [activeFlowId]);
+
+  // Clear debounce timers only on unmount (not on tab switch)
+  useEffect(() => {
+    return () => {
+      for (const timer of timerByFlowRef.current.values()) clearTimeout(timer);
+      timerByFlowRef.current.clear();
+    };
+  }, []);
 
   // Flush when switching flow tabs (activeFlowId changes)
   const prevFlowIdRef = useRef<string | null>(null);
@@ -207,9 +232,10 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
 
   // Manual save (Ctrl+S)
   const saveNow = useCallback(async () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+    const flowId = activeFlowIdRef.current;
+    if (flowId) clearFlowTimer(flowId);
     await flush();
-  }, [flush]);
+  }, [flush, clearFlowTimer]);
 
   // -- Cell accessors --
   const getCell = useCallback(

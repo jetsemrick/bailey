@@ -347,4 +347,46 @@ describe('useFlowGrid', () => {
 
     vi.useRealTimers();
   });
+
+  test('DEB-58: editing another tab does not cancel prior flow retry timer', async () => {
+    vi.useFakeTimers();
+    apiMock.listCells.mockResolvedValue([]);
+    apiMock.upsertCells
+      .mockRejectedValueOnce(new Error('tab switch save failed'))
+      .mockResolvedValue(undefined);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, 'flow-a content');
+    grid = renderHook();
+
+    grid.selectFlow('flow-b');
+    grid = renderHook();
+    await Promise.resolve();
+    await Promise.resolve();
+    grid = await flushAndRender();
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+
+    // Typing on flow-b arms a separate debounce and must not clear flow-a's retry
+    grid.updateCell(0, 0, 'flow-b content');
+    grid = renderHook();
+
+    await vi.advanceTimersByTimeAsync(500);
+    await Promise.resolve();
+    await Promise.resolve();
+    grid = await flushAndRender();
+
+    const savedFlows = apiMock.upsertCells.mock.calls.map((call) => call[0]);
+    expect(savedFlows).toContain('flow-a');
+    expect(savedFlows).toContain('flow-b');
+    expect(apiMock.upsertCells).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({ content: 'flow-a content' }),
+    ]);
+    expect(apiMock.upsertCells).toHaveBeenCalledWith('flow-b', [
+      expect.objectContaining({ content: 'flow-b content' }),
+    ]);
+
+    vi.useRealTimers();
+  });
 });
