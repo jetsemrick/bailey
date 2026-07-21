@@ -207,4 +207,70 @@ describe('useFlowGrid', () => {
     expect(grid.activeFlowId).toBe('flow-b');
     expect(grid.getCellContent(0, 0)).toBe('latest tab cell');
   });
+
+  test('DEB-58: restores dirty cells and retries after failed autosave', async () => {
+    vi.useFakeTimers();
+    apiMock.listCells.mockResolvedValue([]);
+    apiMock.upsertCells
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce(undefined);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, 'unsaved content');
+    grid = renderHook();
+    expect(grid.getCellContent(0, 0)).toBe('unsaved content');
+
+    await grid.saveNow();
+    grid = await flushAndRender();
+    expect(grid.error).toBe('network down');
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+    expect(apiMock.upsertCells).toHaveBeenLastCalledWith('flow-a', [
+      expect.objectContaining({ column_index: 0, row_index: 0, content: 'unsaved content' }),
+    ]);
+
+    // Debounced retry should re-flush the restored dirty cell
+    await vi.advanceTimersByTimeAsync(500);
+    grid = await flushAndRender();
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(2);
+    expect(apiMock.upsertCells).toHaveBeenLastCalledWith('flow-a', [
+      expect.objectContaining({ column_index: 0, row_index: 0, content: 'unsaved content' }),
+    ]);
+    expect(grid.error).toBe('network down');
+
+    vi.useRealTimers();
+  });
+
+  test('DEB-58: failed flush keeps newer edits instead of restoring stale dirty', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    const upsert = deferred<void>();
+    apiMock.upsertCells.mockReturnValueOnce(upsert.promise);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, 'first draft');
+    grid = renderHook();
+
+    const savePromise = grid.saveNow();
+    // While the first flush is in flight, a newer edit lands in dirtyRef
+    grid.updateCell(0, 0, 'second draft');
+    grid = renderHook();
+    expect(grid.getCellContent(0, 0)).toBe('second draft');
+
+    upsert.reject(new Error('write failed'));
+    await savePromise.catch(() => undefined);
+    grid = await flushAndRender();
+    expect(grid.error).toBe('write failed');
+
+    apiMock.upsertCells.mockResolvedValueOnce(undefined);
+    await grid.saveNow();
+    grid = await flushAndRender();
+
+    expect(apiMock.upsertCells).toHaveBeenLastCalledWith('flow-a', [
+      expect.objectContaining({ column_index: 0, row_index: 0, content: 'second draft' }),
+    ]);
+    expect(grid.getCellContent(0, 0)).toBe('second draft');
+  });
 });

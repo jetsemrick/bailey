@@ -30,8 +30,21 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   }, [roundId, activeFlowId]);
 
   // Dirty cells awaiting save
-  const dirtyRef = useRef<Map<string, { column_index: number; row_index: number; content: string; color: CellColor; comment: string }>>(new Map());
+  type DirtyCell = { column_index: number; row_index: number; content: string; color: CellColor; comment: string };
+  const dirtyRef = useRef<Map<string, DirtyCell>>(new Map());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeFlowIdRef = useRef<string | null>(activeFlowId);
+  activeFlowIdRef.current = activeFlowId;
+
+  /** DEB-58: re-queue failed writes without clobbering newer edits for the same cell. */
+  const restoreDirtyCells = useCallback((toSave: DirtyCell[]) => {
+    for (const cell of toSave) {
+      const key = `${cell.column_index}:${cell.row_index}`;
+      if (!dirtyRef.current.has(key)) {
+        dirtyRef.current.set(key, cell);
+      }
+    }
+  }, []);
 
   // -- Load flows for the round --
   const loadFlows = useCallback(async () => {
@@ -97,19 +110,30 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
 
   // -- Flush dirty cells to Supabase --
   const flush = useCallback(async () => {
-    if (!activeFlowId || dirtyRef.current.size === 0) return;
+    const flowId = activeFlowIdRef.current;
+    if (!flowId || dirtyRef.current.size === 0) return;
     const toSave = Array.from(dirtyRef.current.values());
     dirtyRef.current.clear();
     try {
-      await api.upsertCells(activeFlowId, toSave);
+      await api.upsertCells(flowId, toSave);
     } catch (err) {
+      // DEB-58: restore dirty cells so autosave can retry (keep newer edits if present)
+      if (activeFlowIdRef.current === flowId) {
+        restoreDirtyCells(toSave);
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
+          void flush();
+        }, DEBOUNCE_MS);
+      }
       setError(err instanceof Error ? err.message : 'Failed to save cells');
     }
-  }, [activeFlowId]);
+  }, [restoreDirtyCells]);
 
   const scheduleSave = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(flush, DEBOUNCE_MS);
+    timerRef.current = setTimeout(() => {
+      void flush();
+    }, DEBOUNCE_MS);
   }, [flush]);
 
   // Flush pending changes before page unload
@@ -139,12 +163,20 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
         const toSave = Array.from(dirtyRef.current.values());
         dirtyRef.current.clear();
         api.upsertCells(prevId, toSave).catch((err) => {
+          // DEB-58: only re-queue if the user switched back to that flow
+          if (activeFlowIdRef.current === prevId) {
+            restoreDirtyCells(toSave);
+            if (timerRef.current) clearTimeout(timerRef.current);
+            timerRef.current = setTimeout(() => {
+              void flush();
+            }, DEBOUNCE_MS);
+          }
           setError(err instanceof Error ? err.message : 'Failed to save cells');
         });
       }
     }
     prevFlowIdRef.current = activeFlowId;
-  }, [activeFlowId]);
+  }, [activeFlowId, flush, restoreDirtyCells]);
 
   // Manual save (Ctrl+S)
   const saveNow = useCallback(async () => {
