@@ -78,19 +78,26 @@ ENV
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Warm the Supabase container images into the snapshot.
+# 5. Warm the Supabase container images into the snapshot (best effort).
 #    Boot the daemon, pull/start the stack once, then tear it down so no
 #    process survives install. Only the downloaded images remain on disk.
+#    This is an optimization: if it cannot run here (e.g. a build sandbox that
+#    restricts nested Docker) the images are pulled on first boot instead, so
+#    the failure must never abort install.
 # ---------------------------------------------------------------------------
 SB_EXCLUDE="studio,imgproxy,edge-runtime,logflare,vector,supavisor,mailpit"
-log "Warming Supabase images"
-bash "$REPO_ROOT/scripts/start-docker-daemon.sh"
-
-cd "$REPO_ROOT"
-supabase start -x "$SB_EXCLUDE" >/tmp/supabase-warm.log 2>&1 \
-  && log "Supabase started (images cached)" \
-  || { log "ERROR: Supabase warm start failed; tail of /tmp/supabase-warm.log:"; tail -n 30 /tmp/supabase-warm.log; exit 1; }
-supabase stop --no-backup >/dev/null 2>&1 || true
+log "Warming Supabase images (best effort)"
+if bash "$REPO_ROOT/scripts/start-docker-daemon.sh"; then
+  cd "$REPO_ROOT"
+  if supabase start -x "$SB_EXCLUDE" >/tmp/supabase-warm.log 2>&1; then
+    log "Supabase started (images cached)"
+  else
+    log "WARN: Supabase warm start failed; images will be pulled on first boot (see /tmp/supabase-warm.log)"
+  fi
+  supabase stop --no-backup >/dev/null 2>&1 || true
+else
+  log "WARN: Docker daemon unavailable during install; skipping image warm-up (images pulled on first boot)"
+fi
 
 # Ensure no daemon lingers past install (images remain cached on disk).
 for pid in $(pgrep -x dockerd); do sudo kill "$pid" >/dev/null 2>&1 || true; done
