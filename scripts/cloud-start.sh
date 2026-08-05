@@ -11,7 +11,7 @@ set -uo pipefail
 
 export PATH="$HOME/.npm-global/bin:$PATH"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SB_EXCLUDE="studio,imgproxy,edge-runtime,logflare,vector,supavisor,pooler,mailpit"
+SB_EXCLUDE="studio,imgproxy,edge-runtime,logflare,vector,supavisor,mailpit"
 
 log() { echo "[start] $*"; }
 

@@ -82,7 +82,7 @@ fi
 #    Boot the daemon, pull/start the stack once, then tear it down so no
 #    process survives install. Only the downloaded images remain on disk.
 # ---------------------------------------------------------------------------
-SB_EXCLUDE="studio,imgproxy,edge-runtime,logflare,vector,supavisor,pooler,mailpit"
+SB_EXCLUDE="studio,imgproxy,edge-runtime,logflare,vector,supavisor,mailpit"
 log "Warming Supabase images"
 bash "$REPO_ROOT/scripts/start-docker-daemon.sh"
 
