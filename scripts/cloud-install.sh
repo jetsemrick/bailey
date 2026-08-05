@@ -78,33 +78,22 @@ ENV
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Warm the Supabase container images into the snapshot (best effort).
+# 5. Warm the Supabase container images into the snapshot.
 #    Boot the daemon, pull/start the stack once, then tear it down so no
 #    process survives install. Only the downloaded images remain on disk.
 # ---------------------------------------------------------------------------
 SB_EXCLUDE="studio,imgproxy,edge-runtime,logflare,vector,supavisor,pooler,mailpit"
-if command -v docker >/dev/null 2>&1; then
-  log "Warming Supabase images"
-  if ! docker info >/dev/null 2>&1; then
-    sudo dockerd --storage-driver=fuse-overlayfs >/tmp/dockerd-install.log 2>&1 &
-    DOCKERD_PID=$!
-    for _ in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 1; done
-  fi
-  sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
-  if docker info >/dev/null 2>&1; then
-    cd "$REPO_ROOT"
-    supabase start -x "$SB_EXCLUDE" >/tmp/supabase-warm.log 2>&1 \
-      && log "Supabase started (images cached)" \
-      || log "WARN: Supabase warm start failed; images will be pulled on first boot (see /tmp/supabase-warm.log)"
-    supabase stop --no-backup >/dev/null 2>&1 || true
-  else
-    log "WARN: Docker daemon did not come up during install; skipping image warm-up"
-  fi
-  # Ensure no daemon lingers past install.
-  if [ -n "${DOCKERD_PID:-}" ]; then
-    sudo kill "$DOCKERD_PID" >/dev/null 2>&1 || true
-    wait "$DOCKERD_PID" 2>/dev/null || true
-  fi
-fi
+log "Warming Supabase images"
+bash "$REPO_ROOT/scripts/start-docker-daemon.sh"
+
+cd "$REPO_ROOT"
+supabase start -x "$SB_EXCLUDE" >/tmp/supabase-warm.log 2>&1 \
+  && log "Supabase started (images cached)" \
+  || { log "ERROR: Supabase warm start failed; tail of /tmp/supabase-warm.log:"; tail -n 30 /tmp/supabase-warm.log; exit 1; }
+supabase stop --no-backup >/dev/null 2>&1 || true
+
+# Ensure no daemon lingers past install (images remain cached on disk).
+for pid in $(pgrep -x dockerd); do sudo kill "$pid" >/dev/null 2>&1 || true; done
+sudo rm -f /tmp/cursor-dockerd.pid 2>/dev/null || true
 
 log "install complete"

@@ -19,14 +19,8 @@ log() { echo "[start] $*"; }
 sudo update-alternatives --set iptables /usr/sbin/iptables-legacy >/dev/null 2>&1 || true
 sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy >/dev/null 2>&1 || true
 
-# 1. Docker daemon.
-if ! docker info >/dev/null 2>&1; then
-  log "Starting Docker daemon"
-  sudo dockerd --storage-driver=fuse-overlayfs >/tmp/dockerd.log 2>&1 &
-  for _ in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 1; done
-fi
-sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
-docker info >/dev/null 2>&1 || { log "ERROR: Docker daemon unavailable (see /tmp/dockerd.log)"; }
+# 1. Docker daemon (no systemd in these VMs).
+bash "$REPO_ROOT/scripts/start-docker-daemon.sh" || log "WARN: Docker daemon unavailable (see /tmp/dockerd.log)"
 
 # 2. Local Supabase stack (idempotent; no-op if already running).
 cd "$REPO_ROOT"
