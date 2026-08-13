@@ -1,9 +1,15 @@
-import { useState, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useState, useEffect, useCallback, useRef, type Dispatch, type SetStateAction } from 'react';
 import { Flow, FlowCell, SPEECH_COLUMNS } from '../db/types';
 import * as api from '../db/api';
 import Cell from './Cell';
 import { flowSheetRootClass, type FlowSheetVariant } from './flowSheetVariant';
-import { loadDecisionCells, type DecisionCellsByFlow } from './decisionCells';
+import {
+  loadDecisionCells,
+  markDecisionFlowsSeen,
+  mergeDecisionCells,
+  staleDecisionFlowIds,
+  type DecisionCellsByFlow,
+} from './decisionCells';
 
 const DECISION_COLUMNS = [
   { label: '2NR', colIndex: SPEECH_COLUMNS.indexOf('2NR'), side: 'neg' as const },
@@ -12,8 +18,8 @@ const DECISION_COLUMNS = [
 
 interface DecisionViewProps {
   flows: Flow[];
-  /** Bumps after dirty cells are persisted (DEB-59). */
-  cellsRevision: number;
+  /** Save counter per flow; bumps once that flow's dirty cells are persisted (DEB-59). */
+  savedFlowRevisions: Map<string, number>;
   /** Flush debounced dirty cells before reading from the DB (DEB-59). */
   flushPending?: () => Promise<void>;
   /** Lifted to RoundPage so closing sheets survives Flow / Decision tab switches. */
@@ -24,7 +30,7 @@ interface DecisionViewProps {
 
 export default function DecisionView({
   flows,
-  cellsRevision,
+  savedFlowRevisions,
   flushPending,
   visibleFlowIds,
   onVisibleFlowIdsChange,
@@ -36,6 +42,12 @@ export default function DecisionView({
   const [containerHeight, setContainerHeight] = useState(0);
   const flushPendingRef = useRef(flushPending);
   flushPendingRef.current = flushPending;
+  const savedFlowRevisionsRef = useRef(savedFlowRevisions);
+  savedFlowRevisionsRef.current = savedFlowRevisions;
+  // Revisions already reflected in cellsByFlow; seeded so mounting does not double-fetch.
+  const seenFlowRevisionsRef = useRef<Map<string, number>>(new Map(savedFlowRevisions));
+  const flowIdsKey = flows.map((f) => f.id).join(',');
+  const flushDirtyCells = useCallback(() => flushPendingRef.current?.() ?? Promise.resolve(), []);
 
   // Track container height to fill viewport with rows
   useEffect(() => {
@@ -48,34 +60,58 @@ export default function DecisionView({
     return () => ro.disconnect();
   }, []);
 
-  // Fetch cells for all flows — only after pending autosaves land (DEB-59)
+  // Load every sheet once per flow set — only after pending autosaves land (DEB-59)
   useEffect(() => {
-    let mounted = true;
-    const fetchData = async () => {
-      if (flows.length === 0) {
-        if (mounted) setLoading(false);
-        return;
-      }
+    const flowIds = flowIdsKey ? flowIdsKey.split(',') : [];
+    if (flowIds.length === 0) {
+      setLoading(false);
+      return;
+    }
 
+    let mounted = true;
+    const startRevisions = new Map(savedFlowRevisionsRef.current);
+    (async () => {
       try {
-        const newCellsMap = await loadDecisionCells(
-          flows.map((f) => f.id),
-          api.listCells,
-          () => flushPendingRef.current?.() ?? Promise.resolve()
+        const loaded = await loadDecisionCells(flowIds, api.listCells, flushDirtyCells);
+        if (!mounted) return;
+        seenFlowRevisionsRef.current = markDecisionFlowsSeen(
+          seenFlowRevisionsRef.current,
+          flowIds,
+          startRevisions
         );
-        if (mounted) {
-          setCellsByFlow(newCellsMap);
-          setLoading(false);
-        }
+        setCellsByFlow(loaded);
+        setLoading(false);
       } catch (err) {
         console.error('Failed to load decision view cells', err);
         if (mounted) setLoading(false);
       }
-    };
-
-    fetchData();
+    })();
     return () => { mounted = false; };
-  }, [flows, cellsRevision]);
+  }, [flowIdsKey]);
+
+  // Refetch only the sheets whose cells were saved since the last read (DEB-59)
+  useEffect(() => {
+    const flowIds = flowIdsKey ? flowIdsKey.split(',') : [];
+    const staleFlowIds = staleDecisionFlowIds(flowIds, savedFlowRevisions, seenFlowRevisionsRef.current);
+    if (staleFlowIds.length === 0) return;
+
+    let mounted = true;
+    (async () => {
+      try {
+        const loaded = await loadDecisionCells(staleFlowIds, api.listCells, flushDirtyCells);
+        if (!mounted) return;
+        seenFlowRevisionsRef.current = markDecisionFlowsSeen(
+          seenFlowRevisionsRef.current,
+          staleFlowIds,
+          savedFlowRevisions
+        );
+        setCellsByFlow((prev) => mergeDecisionCells(prev, loaded));
+      } catch (err) {
+        console.error('Failed to refresh decision view cells', err);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [savedFlowRevisions, flowIdsKey]);
 
   const toggleFlow = (id: string) => {
     onVisibleFlowIdsChange((prev) => {

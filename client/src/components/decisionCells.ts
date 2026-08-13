@@ -25,3 +25,40 @@ export async function loadDecisionCells(
   );
   return cellsByFlow;
 }
+
+export function mergeDecisionCells(
+  previous: DecisionCellsByFlow,
+  updates: DecisionCellsByFlow
+): DecisionCellsByFlow {
+  const merged = new Map(previous);
+  updates.forEach((cells, flowId) => merged.set(flowId, cells));
+  return merged;
+}
+
+/** Flows whose cells were saved since Decision view last read them (DEB-59). */
+export function staleDecisionFlowIds(
+  flowIds: string[],
+  savedFlowRevisions: Map<string, number>,
+  seenFlowRevisions: Map<string, number>
+): string[] {
+  return flowIds.filter(
+    (flowId) => (savedFlowRevisions.get(flowId) ?? 0) > (seenFlowRevisions.get(flowId) ?? 0)
+  );
+}
+
+/**
+ * Records the save revisions covered by a read. Revisions only ever climb, so
+ * concurrent reads can mark flows seen in any order without losing a save.
+ */
+export function markDecisionFlowsSeen(
+  seenFlowRevisions: Map<string, number>,
+  flowIds: string[],
+  savedFlowRevisions: Map<string, number>
+): Map<string, number> {
+  const marked = new Map(seenFlowRevisions);
+  flowIds.forEach((flowId) => {
+    const revision = savedFlowRevisions.get(flowId) ?? 0;
+    marked.set(flowId, Math.max(marked.get(flowId) ?? 0, revision));
+  });
+  return marked;
+}

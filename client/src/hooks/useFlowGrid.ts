@@ -13,14 +13,18 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const [flows, setFlows] = useState<Flow[]>([]);
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [cells, setCells] = useState<Map<string, FlowCell>>(new Map());
-  /** Increments after dirty cells are successfully persisted (DEB-59: DecisionView refetch). */
-  const [cellsRevision, setCellsRevision] = useState(0);
+  /** Save counter per flow, bumped only after that flow's cells reach the DB (DEB-59). */
+  const [savedFlowRevisions, setSavedFlowRevisions] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const cellsLoadRequestRef = useRef(0);
 
-  const bumpCellsRevision = useCallback(() => {
-    setCellsRevision((r) => r + 1);
+  const markFlowSaved = useCallback((flowId: string) => {
+    setSavedFlowRevisions((prev) => {
+      const next = new Map(prev);
+      next.set(flowId, (next.get(flowId) ?? 0) + 1);
+      return next;
+    });
   }, []);
 
   // Remember active flow tab per round (browser tab reload / restore)
@@ -32,8 +36,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   // Dirty cells awaiting save
   const dirtyRef = useRef<Map<string, { column_index: number; row_index: number; content: string; color: CellColor; comment: string }>>(new Map());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** In-flight upsert so DecisionView can await a flush that already cleared dirtyRef (DEB-59). */
-  const flushInFlightRef = useRef<Promise<void> | null>(null);
+  /** Tail of the flush queue, so awaiting a flush also awaits earlier writes (DEB-59). */
+  const flushQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   // -- Load flows for the round --
   const loadFlows = useCallback(async () => {
@@ -98,36 +102,29 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   }, [activeFlowId, loadCells]);
 
   // -- Flush dirty cells to Supabase --
-  // DEB-59: bump cellsRevision only after a successful write so DecisionView
-  // does not refetch while debounced dirty cells are still in memory.
-  const flushFlowCells = useCallback(async (flowId: string) => {
-    if (dirtyRef.current.size === 0) {
-      if (flushInFlightRef.current) await flushInFlightRef.current;
-      return;
-    }
-    // Await any prior in-flight upsert before starting a new one (DEB-59)
-    if (flushInFlightRef.current) await flushInFlightRef.current;
+  // DEB-59: dirty cells are claimed synchronously so they always belong to the
+  // flow being flushed, writes run one at a time, and the returned promise
+  // settles only once every earlier write has landed. Readers that await a
+  // flush (DecisionView, Ctrl+S) therefore never race a pending save.
+  const flushFlowCells = useCallback((flowId: string): Promise<void> => {
+    if (dirtyRef.current.size === 0) return flushQueueRef.current;
     const toSave = Array.from(dirtyRef.current.values());
     dirtyRef.current.clear();
-    const write = (async () => {
+    const queued = flushQueueRef.current.then(async () => {
       try {
         await api.upsertCells(flowId, toSave);
-        bumpCellsRevision();
+        markFlowSaved(flowId);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to save cells');
       }
-    })();
-    flushInFlightRef.current = write;
-    try {
-      await write;
-    } finally {
-      if (flushInFlightRef.current === write) flushInFlightRef.current = null;
-    }
-  }, [bumpCellsRevision]);
+    });
+    flushQueueRef.current = queued;
+    return queued;
+  }, [markFlowSaved]);
 
   const flush = useCallback(async () => {
     if (!activeFlowId) {
-      if (flushInFlightRef.current) await flushInFlightRef.current;
+      await flushQueueRef.current;
       return;
     }
     await flushFlowCells(activeFlowId);
@@ -420,7 +417,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     updateCellColor,
     bulkUpdateCells,
     getColumnRowCount,
-    cellsRevision,
+    savedFlowRevisions,
     saveNow,
     addFlow,
     renameFlow,

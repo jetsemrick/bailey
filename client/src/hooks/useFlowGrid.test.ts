@@ -168,6 +168,11 @@ async function flushAndRender() {
   return renderHook();
 }
 
+/** Let a queued flush hand off to the next write in the chain. */
+async function drainMicrotasks(ticks = 8) {
+  for (let i = 0; i < ticks; i++) await Promise.resolve();
+}
+
 describe('useFlowGrid', () => {
   beforeEach(() => {
     hookHarness.reset();
@@ -208,27 +213,27 @@ describe('useFlowGrid', () => {
     expect(grid.getCellContent(0, 0)).toBe('latest tab cell');
   });
 
-  test('DEB-59: does not bump cellsRevision on edit before flush', async () => {
+  test('DEB-59: does not mark a flow saved on edit before flush', async () => {
     apiMock.listCells.mockResolvedValue([]);
     let grid = renderHook();
     grid = await flushAndRender();
-    expect(grid.cellsRevision).toBe(0);
+    expect(grid.savedFlowRevisions.size).toBe(0);
 
     grid.updateCell(0, 0, 'typed while debounce pending');
     grid = renderHook();
     expect(grid.getCellContent(0, 0)).toBe('typed while debounce pending');
-    expect(grid.cellsRevision).toBe(0);
+    expect(grid.savedFlowRevisions.get('flow-a')).toBeUndefined();
     expect(apiMock.upsertCells).not.toHaveBeenCalled();
   });
 
-  test('DEB-59: bumps cellsRevision only after successful saveNow flush', async () => {
+  test('DEB-59: marks the flow saved only after a successful saveNow flush', async () => {
     apiMock.listCells.mockResolvedValue([]);
     let grid = renderHook();
     grid = await flushAndRender();
 
     grid.updateCell(5, 0, '2NR content');
     grid = renderHook();
-    expect(grid.cellsRevision).toBe(0);
+    expect(grid.savedFlowRevisions.get('flow-a')).toBeUndefined();
 
     await grid.saveNow();
     grid = await flushAndRender();
@@ -240,10 +245,10 @@ describe('useFlowGrid', () => {
         content: '2NR content',
       }),
     ]);
-    expect(grid.cellsRevision).toBe(1);
+    expect(grid.savedFlowRevisions.get('flow-a')).toBe(1);
   });
 
-  test('DEB-59: failed flush does not bump cellsRevision', async () => {
+  test('DEB-59: failed flush does not mark the flow saved', async () => {
     apiMock.listCells.mockResolvedValue([]);
     apiMock.upsertCells.mockRejectedValueOnce(new Error('network down'));
     let grid = renderHook();
@@ -254,7 +259,7 @@ describe('useFlowGrid', () => {
     await grid.saveNow();
     grid = await flushAndRender();
 
-    expect(grid.cellsRevision).toBe(0);
+    expect(grid.savedFlowRevisions.get('flow-a')).toBeUndefined();
     expect(grid.error).toBe('network down');
   });
 
@@ -284,8 +289,52 @@ describe('useFlowGrid', () => {
     grid = await flushAndRender();
 
     expect(saveDone).toBe(true);
-    expect(grid.cellsRevision).toBe(1);
+    expect(grid.savedFlowRevisions.get('flow-a')).toBe(1);
     expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  test('DEB-59: a later flush waits for the earlier write instead of overlapping it', async () => {
+    vi.useFakeTimers();
+    apiMock.listCells.mockResolvedValue([]);
+    const firstUpsert = deferred<void>();
+    const secondUpsert = deferred<void>();
+    apiMock.upsertCells
+      .mockReturnValueOnce(firstUpsert.promise)
+      .mockReturnValueOnce(secondUpsert.promise);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, 'first edit');
+    grid = renderHook();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+
+    grid.updateCell(0, 1, 'second edit');
+    grid = renderHook();
+
+    let saveDone = false;
+    const savePromise = grid.saveNow().then(() => {
+      saveDone = true;
+    });
+    await Promise.resolve();
+    // The second write may not start while the first is still in flight.
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+
+    firstUpsert.resolve();
+    await drainMicrotasks();
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(2);
+    expect(saveDone).toBe(false);
+
+    secondUpsert.resolve();
+    await savePromise;
+    grid = await flushAndRender();
+
+    expect(saveDone).toBe(true);
+    expect(grid.savedFlowRevisions.get('flow-a')).toBe(2);
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(2);
+    expect(apiMock.upsertCells.mock.calls.every(([, cells]) => cells.length > 0)).toBe(true);
     vi.useRealTimers();
   });
 });

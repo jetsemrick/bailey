@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { FlowCell } from '../db/types';
-import { loadDecisionCells } from './decisionCells';
+import {
+  loadDecisionCells,
+  markDecisionFlowsSeen,
+  mergeDecisionCells,
+  staleDecisionFlowIds,
+} from './decisionCells';
 
 function makeCell(flowId: string, content: string): FlowCell {
   return {
@@ -73,5 +78,48 @@ describe('loadDecisionCells (DEB-59)', () => {
 
     expect(listCells).toHaveBeenCalledTimes(1);
     expect(listCells).toHaveBeenCalledWith('flow-b');
+  });
+});
+
+describe('decision cell freshness tracking (DEB-59)', () => {
+  test('only flows saved since the last read are stale', () => {
+    const saved = new Map([
+      ['flow-a', 2],
+      ['flow-b', 1],
+    ]);
+    const seen = new Map([
+      ['flow-a', 1],
+      ['flow-b', 1],
+    ]);
+
+    expect(staleDecisionFlowIds(['flow-a', 'flow-b', 'flow-c'], saved, seen)).toEqual(['flow-a']);
+  });
+
+  test('marking a read keeps the highest revision seen per flow', () => {
+    const seen = new Map([['flow-a', 3]]);
+    const saved = new Map([
+      ['flow-a', 2],
+      ['flow-b', 1],
+    ]);
+
+    const marked = markDecisionFlowsSeen(seen, ['flow-a', 'flow-b'], saved);
+
+    expect(marked.get('flow-a')).toBe(3);
+    expect(marked.get('flow-b')).toBe(1);
+    expect(staleDecisionFlowIds(['flow-a', 'flow-b'], saved, marked)).toEqual([]);
+  });
+
+  test('merging a refetch replaces only the refetched flows', () => {
+    const previous = new Map([
+      ['flow-a', new Map([['5:0', makeCell('flow-a', 'old 2NR')]])],
+      ['flow-b', new Map([['5:0', makeCell('flow-b', 'untouched')]])],
+    ]);
+    const updates = new Map([['flow-a', new Map([['5:0', makeCell('flow-a', 'new 2NR')]])]]);
+
+    const merged = mergeDecisionCells(previous, updates);
+
+    expect(merged.get('flow-a')?.get('5:0')?.content).toBe('new 2NR');
+    expect(merged.get('flow-b')?.get('5:0')?.content).toBe('untouched');
+    expect(previous.get('flow-a')?.get('5:0')?.content).toBe('old 2NR');
   });
 });
