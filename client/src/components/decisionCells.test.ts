@@ -1,20 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import type { Flow, FlowCell } from '../db/types';
-import { loadDecisionCells } from './DecisionView';
-
-function makeFlow(id: string): Flow {
-  return {
-    id,
-    user_id: 'user-1',
-    round_id: 'round-1',
-    position_name: id,
-    initiated_by: 'aff',
-    display_order: 0,
-    tab_kind: 'standard',
-    created_at: '2026-01-01T00:00:00.000Z',
-    updated_at: '2026-01-01T00:00:00.000Z',
-  };
-}
+import type { FlowCell } from '../db/types';
+import { loadDecisionCells } from './decisionCells';
 
 function makeCell(flowId: string, content: string): FlowCell {
   return {
@@ -49,7 +35,7 @@ describe('loadDecisionCells (DEB-59)', () => {
       return dbContent ? [makeCell(flowId, dbContent)] : [];
     });
 
-    const result = await loadDecisionCells([makeFlow('flow-a')], listCells, flushPending);
+    const result = await loadDecisionCells(['flow-a'], listCells, flushPending);
 
     expect(order).toEqual(['flush', 'list:flow-a']);
     expect(flushPending).toHaveBeenCalledOnce();
@@ -65,7 +51,7 @@ describe('loadDecisionCells (DEB-59)', () => {
     const listCells = vi.fn(async () => [makeCell('flow-a', 'from db')]);
 
     let settled = false;
-    const pending = loadDecisionCells([makeFlow('flow-a')], listCells, flushPending).then((map) => {
+    const pending = loadDecisionCells(['flow-a'], listCells, flushPending).then((map) => {
       settled = true;
       return map;
     });
@@ -78,5 +64,14 @@ describe('loadDecisionCells (DEB-59)', () => {
     const result = await pending;
     expect(listCells).toHaveBeenCalledWith('flow-a');
     expect(result.get('flow-a')?.get('5:0')?.content).toBe('from db');
+  });
+
+  test('reads only the flows it is given', async () => {
+    const listCells = vi.fn(async (flowId: string) => [makeCell(flowId, 'content')]);
+
+    await loadDecisionCells(['flow-b'], listCells);
+
+    expect(listCells).toHaveBeenCalledTimes(1);
+    expect(listCells).toHaveBeenCalledWith('flow-b');
   });
 });

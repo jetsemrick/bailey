@@ -3,30 +3,12 @@ import { Flow, FlowCell, SPEECH_COLUMNS } from '../db/types';
 import * as api from '../db/api';
 import Cell from './Cell';
 import { flowSheetRootClass, type FlowSheetVariant } from './flowSheetVariant';
+import { loadDecisionCells, type DecisionCellsByFlow } from './decisionCells';
 
 const DECISION_COLUMNS = [
   { label: '2NR', colIndex: SPEECH_COLUMNS.indexOf('2NR'), side: 'neg' as const },
   { label: '2AR', colIndex: SPEECH_COLUMNS.indexOf('2AR'), side: 'aff' as const },
 ];
-
-/** Flush pending autosaves, then load cells for Decision view (DEB-59). */
-export async function loadDecisionCells(
-  flows: Flow[],
-  listCells: (flowId: string) => Promise<FlowCell[]> = api.listCells,
-  flushPending?: () => Promise<void>
-): Promise<Map<string, Map<string, FlowCell>>> {
-  await flushPending?.();
-  const newCellsMap = new Map<string, Map<string, FlowCell>>();
-  await Promise.all(
-    flows.map(async (f) => {
-      const cells = await listCells(f.id);
-      const cellMap = new Map<string, FlowCell>();
-      cells.forEach((c) => cellMap.set(`${c.column_index}:${c.row_index}`, c));
-      newCellsMap.set(f.id, cellMap);
-    })
-  );
-  return newCellsMap;
-}
 
 interface DecisionViewProps {
   flows: Flow[];
@@ -48,7 +30,7 @@ export default function DecisionView({
   onVisibleFlowIdsChange,
   variant = 'default',
 }: DecisionViewProps) {
-  const [cellsByFlow, setCellsByFlow] = useState<Map<string, Map<string, FlowCell>>>(new Map());
+  const [cellsByFlow, setCellsByFlow] = useState<DecisionCellsByFlow>(new Map());
   const [loading, setLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -76,8 +58,10 @@ export default function DecisionView({
       }
 
       try {
-        const newCellsMap = await loadDecisionCells(flows, api.listCells, () =>
-          flushPendingRef.current?.() ?? Promise.resolve()
+        const newCellsMap = await loadDecisionCells(
+          flows.map((f) => f.id),
+          api.listCells,
+          () => flushPendingRef.current?.() ?? Promise.resolve()
         );
         if (mounted) {
           setCellsByFlow(newCellsMap);
