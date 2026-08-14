@@ -168,6 +168,11 @@ async function flushAndRender() {
   return renderHook();
 }
 
+/** Let a queued flush hand off to the next write in the chain. */
+async function drainMicrotasks(ticks = 8) {
+  for (let i = 0; i < ticks; i++) await Promise.resolve();
+}
+
 describe('useFlowGrid', () => {
   beforeEach(() => {
     hookHarness.reset();
@@ -387,6 +392,137 @@ describe('useFlowGrid', () => {
       expect.objectContaining({ content: 'flow-b content' }),
     ]);
 
+    vi.useRealTimers();
+  });
+
+  test('DEB-59: does not mark a flow saved on edit before flush', async () => {
+    vi.useFakeTimers();
+    apiMock.listCells.mockResolvedValue([]);
+    let grid = renderHook();
+    grid = await flushAndRender();
+    expect(grid.savedFlowRevisions.size).toBe(0);
+
+    grid.updateCell(0, 0, 'typed while debounce pending');
+    grid = renderHook();
+    expect(grid.getCellContent(0, 0)).toBe('typed while debounce pending');
+    expect(grid.savedFlowRevisions.get('flow-a')).toBeUndefined();
+    expect(apiMock.upsertCells).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  test('DEB-59: marks the flow saved only after a successful saveNow flush', async () => {
+    vi.useFakeTimers();
+    apiMock.listCells.mockResolvedValue([]);
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(5, 0, '2NR content');
+    grid = renderHook();
+    expect(grid.savedFlowRevisions.get('flow-a')).toBeUndefined();
+
+    await grid.saveNow();
+    grid = await flushAndRender();
+
+    expect(apiMock.upsertCells).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({
+        column_index: 5,
+        row_index: 0,
+        content: '2NR content',
+      }),
+    ]);
+    expect(grid.savedFlowRevisions.get('flow-a')).toBe(1);
+    vi.useRealTimers();
+  });
+
+  test('DEB-59: failed flush does not mark the flow saved', async () => {
+    vi.useFakeTimers();
+    apiMock.listCells.mockResolvedValue([]);
+    apiMock.upsertCells.mockRejectedValueOnce(new Error('network down'));
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, 'will fail to save');
+    grid = renderHook();
+    await grid.saveNow();
+    grid = await flushAndRender();
+
+    expect(grid.savedFlowRevisions.get('flow-a')).toBeUndefined();
+    expect(grid.error).toBe('network down');
+    vi.useRealTimers();
+  });
+
+  test('DEB-59: saveNow awaits an in-flight debounce flush', async () => {
+    vi.useFakeTimers();
+    apiMock.listCells.mockResolvedValue([]);
+    const upsert = deferred<void>();
+    apiMock.upsertCells.mockReturnValueOnce(upsert.promise);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+    grid.updateCell(0, 0, 'pending write');
+    grid = renderHook();
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+
+    let saveDone = false;
+    const savePromise = grid.saveNow().then(() => {
+      saveDone = true;
+    });
+    await Promise.resolve();
+    expect(saveDone).toBe(false);
+
+    upsert.resolve();
+    await savePromise;
+    grid = await flushAndRender();
+
+    expect(saveDone).toBe(true);
+    expect(grid.savedFlowRevisions.get('flow-a')).toBe(1);
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  test('DEB-59: a later flush waits for the earlier write instead of overlapping it', async () => {
+    vi.useFakeTimers();
+    apiMock.listCells.mockResolvedValue([]);
+    const firstUpsert = deferred<void>();
+    const secondUpsert = deferred<void>();
+    apiMock.upsertCells
+      .mockReturnValueOnce(firstUpsert.promise)
+      .mockReturnValueOnce(secondUpsert.promise);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, 'first edit');
+    grid = renderHook();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+
+    grid.updateCell(0, 1, 'second edit');
+    grid = renderHook();
+
+    let saveDone = false;
+    const savePromise = grid.saveNow().then(() => {
+      saveDone = true;
+    });
+    await Promise.resolve();
+    // The second write may not start while the first is still in flight.
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+
+    firstUpsert.resolve();
+    await drainMicrotasks();
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(2);
+    expect(saveDone).toBe(false);
+
+    secondUpsert.resolve();
+    await savePromise;
+    grid = await flushAndRender();
+
+    expect(saveDone).toBe(true);
+    expect(grid.savedFlowRevisions.get('flow-a')).toBe(2);
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(2);
+    expect(apiMock.upsertCells.mock.calls.every(([, cells]) => cells.length > 0)).toBe(true);
     vi.useRealTimers();
   });
 });

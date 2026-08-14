@@ -206,7 +206,8 @@ function RoundPageInner() {
                 {rebuttalFocus ? (
                   <DecisionView
                     flows={grid.flows}
-                    cellsRevision={grid.cellsRevision}
+                    savedFlowRevisions={grid.savedFlowRevisions}
+                    flushPending={grid.saveNow}
                     visibleFlowIds={decisionVisibleFlowIds}
                     onVisibleFlowIdsChange={setDecisionVisibleFlowIds}
                     variant={flowSheetVariant}

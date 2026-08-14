@@ -13,14 +13,18 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const [flows, setFlows] = useState<Flow[]>([]);
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [cells, setCells] = useState<Map<string, FlowCell>>(new Map());
-  /** Increments when any flow cells change (DEB-27: DecisionView refetch). */
-  const [cellsRevision, setCellsRevision] = useState(0);
+  /** Save counter per flow, bumped only after that flow's cells reach the DB (DEB-59). */
+  const [savedFlowRevisions, setSavedFlowRevisions] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const cellsLoadRequestRef = useRef(0);
 
-  const bumpCellsRevision = useCallback(() => {
-    setCellsRevision((r) => r + 1);
+  const markFlowSaved = useCallback((flowId: string) => {
+    setSavedFlowRevisions((prev) => {
+      const next = new Map(prev);
+      next.set(flowId, (next.get(flowId) ?? 0) + 1);
+      return next;
+    });
   }, []);
 
   // Remember active flow tab per round (browser tab reload / restore)
@@ -35,8 +39,12 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const timerByFlowRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const activeFlowIdRef = useRef<string | null>(activeFlowId);
   activeFlowIdRef.current = activeFlowId;
-  /** Serializes upserts so a failed older snapshot cannot restore over a newer write (DEB-58). */
-  const flushInFlightRef = useRef<Promise<void> | null>(null);
+  /**
+   * Tail of the write queue. Serializes upserts so a failed older snapshot cannot
+   * restore over a newer write (DEB-58), and so awaiting a flush also awaits every
+   * write queued before it (DEB-59).
+   */
+  const flushQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   const clearFlowTimer = useCallback((flowId: string) => {
     const existing = timerByFlowRef.current.get(flowId);
@@ -142,45 +150,43 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   }, [activeFlowId, loadCells]);
 
   // -- Flush dirty cells to Supabase --
-  const flushFlowCells = useCallback(async (flowId: string) => {
-    if (flushInFlightRef.current) await flushInFlightRef.current;
-
+  // DEB-59: cells are claimed synchronously and each write is queued behind the
+  // last, so the returned promise settles only once every earlier write has
+  // landed. Readers that await a flush (DecisionView, Ctrl+S) never race a save.
+  const flushFlowCells = useCallback((flowId: string): Promise<void> => {
     const dirty = dirtyByFlowRef.current.get(flowId);
-    if (!dirty || dirty.size === 0) return;
+    if (!dirty || dirty.size === 0) return flushQueueRef.current;
 
     const toSave = Array.from(dirty.values());
     dirty.clear();
 
-    const write = (async () => {
+    const queued = flushQueueRef.current.then(async () => {
       try {
         await api.upsertCells(flowId, toSave);
         setError(null);
+        markFlowSaved(flowId);
       } catch (err) {
         // DEB-58: restore into this flow's dirty map; newer edits for the same key win
         restoreDirtyCells(flowId, toSave);
         setError(err instanceof Error ? err.message : 'Failed to save cells');
       }
-    })();
 
-    flushInFlightRef.current = write;
-    try {
-      await write;
-    } finally {
-      if (flushInFlightRef.current === write) flushInFlightRef.current = null;
-    }
+      // Retry if restore (or concurrent edits) left dirty cells for this flow
+      if ((dirtyByFlowRef.current.get(flowId)?.size ?? 0) > 0) {
+        armFlowTimer(flowId, () => {
+          void flushFlowCells(flowId);
+        });
+      }
+    });
 
-    // Retry if restore (or concurrent edits) left dirty cells for this flow
-    if ((dirtyByFlowRef.current.get(flowId)?.size ?? 0) > 0) {
-      armFlowTimer(flowId, () => {
-        void flushFlowCells(flowId);
-      });
-    }
-  }, [restoreDirtyCells, armFlowTimer]);
+    flushQueueRef.current = queued;
+    return queued;
+  }, [restoreDirtyCells, armFlowTimer, markFlowSaved]);
 
   const flush = useCallback(async () => {
     const flowId = activeFlowIdRef.current;
     if (!flowId) {
-      if (flushInFlightRef.current) await flushInFlightRef.current;
+      await flushQueueRef.current;
       return;
     }
     await flushFlowCells(flowId);
@@ -230,7 +236,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     prevFlowIdRef.current = activeFlowId;
   }, [activeFlowId, flushFlowCells]);
 
-  // Manual save (Ctrl+S)
+  // Manual save (Ctrl+S) / DecisionView pre-fetch (DEB-59)
   const saveNow = useCallback(async () => {
     const flowId = activeFlowIdRef.current;
     if (flowId) clearFlowTimer(flowId);
@@ -287,9 +293,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       });
 
       scheduleSave();
-      bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave, bumpCellsRevision, markDirty]
+    [activeFlowId, scheduleSave, markDirty]
   );
 
   const updateCell = useCallback(
@@ -326,9 +331,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       });
 
       scheduleSave();
-      bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave, bumpCellsRevision, markDirty]
+    [activeFlowId, scheduleSave, markDirty]
   );
 
   const updateCellColor = useCallback(
@@ -372,9 +376,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
         return next;
       });
       scheduleSave();
-      bumpCellsRevision();
     },
-    [activeFlowId, scheduleSave, bumpCellsRevision, markDirty]
+    [activeFlowId, scheduleSave, markDirty]
   );
 
   // -- Row count per column (dynamic, only counts non-empty cells) --
@@ -495,7 +498,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     updateCellColor,
     bulkUpdateCells,
     getColumnRowCount,
-    cellsRevision,
+    savedFlowRevisions,
     saveNow,
     addFlow,
     renameFlow,
