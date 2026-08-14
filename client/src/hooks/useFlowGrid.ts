@@ -33,11 +33,59 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     writeStoredActiveFlowId(roundId, activeFlowId);
   }, [roundId, activeFlowId]);
 
-  // Dirty cells awaiting save
-  const dirtyRef = useRef<Map<string, { column_index: number; row_index: number; content: string; color: CellColor; comment: string }>>(new Map());
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Tail of the flush queue, so awaiting a flush also awaits earlier writes (DEB-59). */
+  // Dirty cells awaiting save (per flow so tab switches cannot mis-attribute restores)
+  type DirtyCell = { column_index: number; row_index: number; content: string; color: CellColor; comment: string };
+  const dirtyByFlowRef = useRef<Map<string, Map<string, DirtyCell>>>(new Map());
+  const timerByFlowRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const activeFlowIdRef = useRef<string | null>(activeFlowId);
+  activeFlowIdRef.current = activeFlowId;
+  /**
+   * Tail of the write queue. Serializes upserts so a failed older snapshot cannot
+   * restore over a newer write (DEB-58), and so awaiting a flush also awaits every
+   * write queued before it (DEB-59).
+   */
   const flushQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  const clearFlowTimer = useCallback((flowId: string) => {
+    const existing = timerByFlowRef.current.get(flowId);
+    if (existing) {
+      clearTimeout(existing);
+      timerByFlowRef.current.delete(flowId);
+    }
+  }, []);
+
+  const armFlowTimer = useCallback((flowId: string, run: () => void) => {
+    clearFlowTimer(flowId);
+    const timer = setTimeout(() => {
+      timerByFlowRef.current.delete(flowId);
+      run();
+    }, DEBOUNCE_MS);
+    timerByFlowRef.current.set(flowId, timer);
+  }, [clearFlowTimer]);
+
+  const dirtyMapFor = useCallback((flowId: string) => {
+    let map = dirtyByFlowRef.current.get(flowId);
+    if (!map) {
+      map = new Map();
+      dirtyByFlowRef.current.set(flowId, map);
+    }
+    return map;
+  }, []);
+
+  /** DEB-58: re-queue failed writes without clobbering newer edits for the same cell. */
+  const restoreDirtyCells = useCallback((flowId: string, toSave: DirtyCell[]) => {
+    const map = dirtyMapFor(flowId);
+    for (const cell of toSave) {
+      const key = `${cell.column_index}:${cell.row_index}`;
+      if (!map.has(key)) {
+        map.set(key, cell);
+      }
+    }
+  }, [dirtyMapFor]);
+
+  const markDirty = useCallback((flowId: string, key: string, cell: DirtyCell) => {
+    dirtyMapFor(flowId).set(key, cell);
+  }, [dirtyMapFor]);
 
   // -- Load flows for the round --
   const loadFlows = useCallback(async () => {
@@ -102,55 +150,81 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   }, [activeFlowId, loadCells]);
 
   // -- Flush dirty cells to Supabase --
-  // DEB-59: dirty cells are claimed synchronously so they always belong to the
-  // flow being flushed, writes run one at a time, and the returned promise
-  // settles only once every earlier write has landed. Readers that await a
-  // flush (DecisionView, Ctrl+S) therefore never race a pending save.
+  // DEB-59: cells are claimed synchronously and each write is queued behind the
+  // last, so the returned promise settles only once every earlier write has
+  // landed. Readers that await a flush (DecisionView, Ctrl+S) never race a save.
   const flushFlowCells = useCallback((flowId: string): Promise<void> => {
-    if (dirtyRef.current.size === 0) return flushQueueRef.current;
-    const toSave = Array.from(dirtyRef.current.values());
-    dirtyRef.current.clear();
+    const dirty = dirtyByFlowRef.current.get(flowId);
+    if (!dirty || dirty.size === 0) return flushQueueRef.current;
+
+    const toSave = Array.from(dirty.values());
+    dirty.clear();
+
     const queued = flushQueueRef.current.then(async () => {
       try {
         await api.upsertCells(flowId, toSave);
+        setError(null);
         markFlowSaved(flowId);
       } catch (err) {
+        // DEB-58: restore into this flow's dirty map; newer edits for the same key win
+        restoreDirtyCells(flowId, toSave);
         setError(err instanceof Error ? err.message : 'Failed to save cells');
       }
+
+      // Retry if restore (or concurrent edits) left dirty cells for this flow
+      if ((dirtyByFlowRef.current.get(flowId)?.size ?? 0) > 0) {
+        armFlowTimer(flowId, () => {
+          void flushFlowCells(flowId);
+        });
+      }
     });
+
     flushQueueRef.current = queued;
     return queued;
-  }, [markFlowSaved]);
+  }, [restoreDirtyCells, armFlowTimer, markFlowSaved]);
 
   const flush = useCallback(async () => {
-    if (!activeFlowId) {
+    const flowId = activeFlowIdRef.current;
+    if (!flowId) {
       await flushQueueRef.current;
       return;
     }
-    await flushFlowCells(activeFlowId);
-  }, [activeFlowId, flushFlowCells]);
+    await flushFlowCells(flowId);
+  }, [flushFlowCells]);
 
   const scheduleSave = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(flush, DEBOUNCE_MS);
-  }, [flush]);
+    const flowId = activeFlowIdRef.current;
+    if (!flowId) return;
+    // Only debounce this flow — do not cancel retries armed for other flows (DEB-58)
+    armFlowTimer(flowId, () => {
+      void flush();
+    });
+  }, [flush, armFlowTimer]);
 
   // Flush pending changes before page unload
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (dirtyRef.current.size > 0 && activeFlowId) {
-        const toSave = Array.from(dirtyRef.current.values());
-        dirtyRef.current.clear();
-        // Best-effort flush on unload (may not complete for async)
-        api.upsertCells(activeFlowId, toSave).catch(() => {});
-      }
+      if (!activeFlowId) return;
+      const dirty = dirtyByFlowRef.current.get(activeFlowId);
+      if (!dirty || dirty.size === 0) return;
+      const toSave = Array.from(dirty.values());
+      dirty.clear();
+      // Best-effort flush on unload (may not complete for async)
+      api.upsertCells(activeFlowId, toSave).catch(() => {});
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [activeFlowId]);
+
+  // Clear debounce timers only on unmount (not on tab switch)
+  useEffect(() => {
+    return () => {
+      for (const timer of timerByFlowRef.current.values()) clearTimeout(timer);
+      timerByFlowRef.current.clear();
+    };
+  }, []);
 
   // Flush when switching flow tabs (activeFlowId changes)
   const prevFlowIdRef = useRef<string | null>(null);
@@ -164,9 +238,10 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
 
   // Manual save (Ctrl+S) / DecisionView pre-fetch (DEB-59)
   const saveNow = useCallback(async () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+    const flowId = activeFlowIdRef.current;
+    if (flowId) clearFlowTimer(flowId);
     await flush();
-  }, [flush]);
+  }, [flush, clearFlowTimer]);
 
   // -- Cell accessors --
   const getCell = useCallback(
@@ -213,13 +288,13 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
           updated_at: new Date().toISOString(),
         });
 
-        dirtyRef.current.set(key, { column_index: col, row_index: row, content, color, comment });
+        markDirty(activeFlowId, key, { column_index: col, row_index: row, content, color, comment });
         return next;
       });
 
       scheduleSave();
     },
-    [activeFlowId, scheduleSave]
+    [activeFlowId, scheduleSave, markDirty]
   );
 
   const updateCell = useCallback(
@@ -245,13 +320,19 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
         });
 
         // Track dirty cell for auto-save
-        dirtyRef.current.set(key, { column_index: col, row_index: row, content, color: cellColor, comment: existing?.comment ?? '' });
+        markDirty(activeFlowId, key, {
+          column_index: col,
+          row_index: row,
+          content,
+          color: cellColor,
+          comment: existing?.comment ?? '',
+        });
         return next;
       });
 
       scheduleSave();
     },
-    [activeFlowId, scheduleSave]
+    [activeFlowId, scheduleSave, markDirty]
   );
 
   const updateCellColor = useCallback(
@@ -284,7 +365,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
             created_at: existing?.created_at ?? new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
-          dirtyRef.current.set(key, {
+          markDirty(activeFlowId, key, {
             column_index: u.col,
             row_index: u.row,
             content: u.content,
@@ -296,7 +377,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       });
       scheduleSave();
     },
-    [activeFlowId, scheduleSave]
+    [activeFlowId, scheduleSave, markDirty]
   );
 
   // -- Row count per column (dynamic, only counts non-empty cells) --
