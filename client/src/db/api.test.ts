@@ -20,7 +20,9 @@ vi.mock('./supabase', () => ({
 
 import {
   createTournament,
+  getTournamentTree,
   listAdminUserSummaries,
+  listTournamentsTree,
   normalizeImportedFlowCells,
   toError,
   updateCurrentProfile,
@@ -258,5 +260,211 @@ describe('authenticated writes', () => {
       ],
       { onConflict: 'flow_id,column_index,row_index' }
     );
+  });
+});
+
+describe('getTournamentTree', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+  });
+
+  test('fetches tournament with nested rounds and flow_tabs in one query', async () => {
+    const singleMock = vi.fn().mockResolvedValue({
+      data: {
+        id: 'tournament-1',
+        user_id: 'user-1',
+        name: 'Nationals',
+        date: null,
+        location: null,
+        tournament_type: 'competitor',
+        team_name: 'Test Team',
+        timer_preset: 'high_school',
+        created_at: '2026-03-11T00:00:00.000Z',
+        updated_at: '2026-03-11T00:00:00.000Z',
+        rounds: [
+          {
+            id: 'round-1',
+            user_id: 'user-1',
+            tournament_id: 'tournament-1',
+            round_number: 1,
+            opponent: 'Team A',
+            team_aff: 'Team A',
+            team_neg: 'Team B',
+            side: 'aff',
+            result: 'W',
+            judge: 'Judge Smith',
+            created_at: '2026-03-11T00:00:00.000Z',
+            updated_at: '2026-03-11T00:00:00.000Z',
+            flow_tabs: [
+              {
+                id: 'flow-1',
+                user_id: 'user-1',
+                round_id: 'round-1',
+                position_name: '1AC',
+                initiated_by: 'aff',
+                tab_kind: 'standard',
+                display_order: 0,
+                created_at: '2026-03-11T00:00:00.000Z',
+                updated_at: '2026-03-11T00:00:00.000Z',
+              },
+              {
+                id: 'flow-2',
+                user_id: 'user-1',
+                round_id: 'round-1',
+                position_name: 'DA',
+                initiated_by: 'neg',
+                tab_kind: 'standard',
+                display_order: 1,
+                created_at: '2026-03-11T00:00:00.000Z',
+                updated_at: '2026-03-11T00:00:00.000Z',
+              },
+            ],
+          },
+          {
+            id: 'round-2',
+            user_id: 'user-1',
+            tournament_id: 'tournament-1',
+            round_number: 2,
+            opponent: 'Team C',
+            team_aff: 'Team C',
+            team_neg: 'Test Team',
+            side: 'neg',
+            result: null,
+            judge: 'Judge Jones',
+            created_at: '2026-03-12T00:00:00.000Z',
+            updated_at: '2026-03-12T00:00:00.000Z',
+            flow_tabs: [],
+          },
+        ],
+      },
+      error: null,
+    });
+    const eqMock = vi.fn(() => ({ single: singleMock }));
+    const selectMock = vi.fn(() => ({ eq: eqMock }));
+    fromMock.mockReturnValue({ select: selectMock });
+
+    const result = await getTournamentTree('tournament-1');
+
+    expect(fromMock).toHaveBeenCalledWith('tournaments');
+    expect(selectMock).toHaveBeenCalledWith(`
+      *,
+      rounds (
+        *,
+        flow_tabs (*)
+      )
+    `);
+    expect(eqMock).toHaveBeenCalledWith('id', 'tournament-1');
+    expect(result.tournament.name).toBe('Nationals');
+    expect(result.rounds).toHaveLength(2);
+    expect(result.rounds[0].round.round_number).toBe(1);
+    expect(result.rounds[0].flows).toHaveLength(2);
+    expect(result.rounds[0].flows[0].position_name).toBe('1AC');
+    expect(result.rounds[0].flows[1].position_name).toBe('DA');
+    expect(result.rounds[1].round.round_number).toBe(2);
+    expect(result.rounds[1].flows).toHaveLength(0);
+  });
+
+  test('sorts rounds by round_number and flows by display_order', async () => {
+    const singleMock = vi.fn().mockResolvedValue({
+      data: {
+        id: 'tournament-1',
+        user_id: 'user-1',
+        name: 'Nationals',
+        created_at: '2026-03-11T00:00:00.000Z',
+        updated_at: '2026-03-11T00:00:00.000Z',
+        rounds: [
+          {
+            id: 'round-3',
+            round_number: 3,
+            flow_tabs: [
+              { id: 'flow-2', display_order: 2, position_name: 'Third' },
+              { id: 'flow-1', display_order: 1, position_name: 'Second' },
+              { id: 'flow-0', display_order: 0, position_name: 'First' },
+            ],
+          },
+          {
+            id: 'round-1',
+            round_number: 1,
+            flow_tabs: [],
+          },
+        ],
+      },
+      error: null,
+    });
+    const eqMock = vi.fn(() => ({ single: singleMock }));
+    const selectMock = vi.fn(() => ({ eq: eqMock }));
+    fromMock.mockReturnValue({ select: selectMock });
+
+    const result = await getTournamentTree('tournament-1');
+
+    expect(result.rounds[0].round.round_number).toBe(1);
+    expect(result.rounds[1].round.round_number).toBe(3);
+    expect(result.rounds[1].flows[0].position_name).toBe('First');
+    expect(result.rounds[1].flows[1].position_name).toBe('Second');
+    expect(result.rounds[1].flows[2].position_name).toBe('Third');
+  });
+});
+
+describe('listTournamentsTree', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+    getSessionMock.mockReset();
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
+  });
+
+  test('fetches multiple tournaments with nested rounds and flow_tabs', async () => {
+    const orderMock = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'tournament-1',
+          user_id: 'user-1',
+          name: 'Nationals',
+          created_at: '2026-03-11T00:00:00.000Z',
+          updated_at: '2026-03-11T00:00:00.000Z',
+          rounds: [
+            {
+              id: 'round-1',
+              round_number: 1,
+              flow_tabs: [
+                { id: 'flow-1', display_order: 0, position_name: '1AC' },
+              ],
+            },
+          ],
+        },
+        {
+          id: 'tournament-2',
+          user_id: 'user-1',
+          name: 'States',
+          created_at: '2026-03-10T00:00:00.000Z',
+          updated_at: '2026-03-10T00:00:00.000Z',
+          rounds: [],
+        },
+      ],
+      error: null,
+    });
+    const eqMock = vi.fn(() => ({ order: orderMock }));
+    const selectMock = vi.fn(() => ({ eq: eqMock }));
+    fromMock.mockReturnValue({ select: selectMock });
+
+    const results = await listTournamentsTree();
+
+    expect(fromMock).toHaveBeenCalledWith('tournaments');
+    expect(selectMock).toHaveBeenCalledWith(`
+      *,
+      rounds (
+        *,
+        flow_tabs (*)
+      )
+    `);
+    expect(eqMock).toHaveBeenCalledWith('user_id', 'user-1');
+    expect(orderMock).toHaveBeenCalledWith('updated_at', { ascending: false });
+    expect(results).toHaveLength(2);
+    expect(results[0].tournament.name).toBe('Nationals');
+    expect(results[0].rounds).toHaveLength(1);
+    expect(results[0].rounds[0].flows).toHaveLength(1);
+    expect(results[1].tournament.name).toBe('States');
+    expect(results[1].rounds).toHaveLength(0);
   });
 });
