@@ -4,6 +4,7 @@ import Layout from '../components/Layout';
 import RoundForm from '../components/RoundForm';
 import TournamentForm from '../components/TournamentForm';
 import ConfirmModal from '../components/ConfirmModal';
+import ImportExport from '../components/ImportExport';
 import { useRounds } from '../hooks/useRounds';
 import * as api from '../db/api';
 import type { Tournament } from '../db/types';
@@ -72,6 +73,11 @@ export default function TournamentPage() {
     }
   };
 
+  const handleRoundImportComplete = async (roundId: string) => {
+    await api.getRound(roundId);
+    window.location.reload();
+  };
+
   if (loadingT) {
     return <Layout><div className="flex-1 flex items-center justify-center text-foreground/40 text-sm">Loading...</div></Layout>;
   }
@@ -109,6 +115,17 @@ export default function TournamentPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <ImportExport
+              mode="tournament"
+              tournamentId={tournament.id}
+              tournamentName={tournament.name}
+            />
+            <ImportExport
+              mode="round"
+              tournamentId={tournament.id}
+              tournamentName={tournament.name}
+              onImportComplete={handleRoundImportComplete}
+            />
             <button
               onClick={() => setShowRoundForm(true)}
               className="px-4 py-1.5 bg-accent text-white rounded text-sm font-medium hover:bg-accent/90 transition-colors"
