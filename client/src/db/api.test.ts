@@ -22,6 +22,7 @@ import {
   createTournament,
   listAdminUserSummaries,
   normalizeImportedFlowCells,
+  reorderFlows,
   toError,
   updateCurrentProfile,
   upsertCells,
@@ -258,5 +259,62 @@ describe('authenticated writes', () => {
       ],
       { onConflict: 'flow_id,column_index,row_index' }
     );
+  });
+});
+
+describe('reorderFlows', () => {
+  beforeEach(() => {
+    rpcMock.mockReset();
+    getSessionMock.mockReset();
+  });
+
+  test('atomically reorders multiple flow tabs in one RPC call', async () => {
+    rpcMock.mockResolvedValue({ data: null, error: null });
+
+    await reorderFlows([
+      { id: 'flow-1', display_order: 0 },
+      { id: 'flow-2', display_order: 1 },
+      { id: 'flow-3', display_order: 2 },
+    ]);
+
+    expect(rpcMock).toHaveBeenCalledOnce();
+    expect(rpcMock).toHaveBeenCalledWith('reorder_flow_tabs', {
+      updates: [
+        { id: 'flow-1', display_order: 0 },
+        { id: 'flow-2', display_order: 1 },
+        { id: 'flow-3', display_order: 2 },
+      ],
+    });
+  });
+
+  test('handles empty array without making RPC call', async () => {
+    await reorderFlows([]);
+
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  test('surfaces RPC errors as Error instances', async () => {
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { message: 'Flow tab not found or access denied' },
+    });
+
+    await expect(
+      reorderFlows([
+        { id: 'flow-1', display_order: 0 },
+        { id: 'flow-2', display_order: 1 },
+      ])
+    ).rejects.toThrow('Flow tab not found or access denied');
+  });
+
+  test('reorders with single flow tab', async () => {
+    rpcMock.mockResolvedValue({ data: null, error: null });
+
+    await reorderFlows([{ id: 'flow-1', display_order: 5 }]);
+
+    expect(rpcMock).toHaveBeenCalledOnce();
+    expect(rpcMock).toHaveBeenCalledWith('reorder_flow_tabs', {
+      updates: [{ id: 'flow-1', display_order: 5 }],
+    });
   });
 });
