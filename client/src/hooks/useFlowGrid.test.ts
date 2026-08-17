@@ -98,6 +98,7 @@ const apiMock = vi.hoisted(() => ({
   listFlows: vi.fn(),
   listCells: vi.fn(),
   upsertCells: vi.fn(),
+  upsertCellsWithKeepalive: vi.fn(),
 }));
 
 vi.mock('react', () => hookHarness.react);
@@ -183,6 +184,7 @@ describe('useFlowGrid', () => {
     });
     apiMock.listFlows.mockResolvedValue([makeFlow('flow-a'), makeFlow('flow-b')]);
     apiMock.upsertCells.mockResolvedValue(undefined);
+    apiMock.upsertCellsWithKeepalive.mockResolvedValue(undefined);
   });
 
   test('ignores stale cells when tab loads resolve out of order', async () => {
@@ -524,5 +526,106 @@ describe('useFlowGrid', () => {
     expect(apiMock.upsertCells).toHaveBeenCalledTimes(2);
     expect(apiMock.upsertCells.mock.calls.every(([, cells]) => cells.length > 0)).toBe(true);
     vi.useRealTimers();
+  });
+
+  test('DEB-64: save status transitions from idle to saving to saved', async () => {
+    vi.useFakeTimers();
+    apiMock.listCells.mockResolvedValue([]);
+    let grid = renderHook();
+    grid = await flushAndRender();
+    expect(grid.saveStatus).toBe('idle');
+
+    grid.updateCell(0, 0, 'new content');
+    grid = renderHook();
+    expect(grid.saveStatus).toBe('saving');
+
+    await vi.advanceTimersByTimeAsync(500);
+    grid = await flushAndRender();
+    expect(grid.saveStatus).toBe('saved');
+    expect(apiMock.upsertCells).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({ content: 'new content' }),
+    ]);
+
+    await vi.advanceTimersByTimeAsync(2000);
+    grid = renderHook();
+    expect(grid.saveStatus).toBe('idle');
+
+    vi.useRealTimers();
+  });
+
+  test('DEB-64: save status transitions to error on failed flush', async () => {
+    vi.useFakeTimers();
+    apiMock.listCells.mockResolvedValue([]);
+    apiMock.upsertCells.mockRejectedValueOnce(new Error('network error'));
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, 'content');
+    grid = renderHook();
+    expect(grid.saveStatus).toBe('saving');
+
+    await vi.advanceTimersByTimeAsync(500);
+    grid = await flushAndRender();
+    expect(grid.saveStatus).toBe('error');
+    expect(grid.error).toBe('network error');
+
+    vi.useRealTimers();
+  });
+
+  test('DEB-64: save status resets to saving on retry', async () => {
+    vi.useFakeTimers();
+    apiMock.listCells.mockResolvedValue([]);
+    apiMock.upsertCells
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce(undefined);
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, 'content');
+    grid = renderHook();
+
+    await vi.advanceTimersByTimeAsync(500);
+    grid = await flushAndRender();
+    expect(grid.saveStatus).toBe('error');
+
+    await vi.advanceTimersByTimeAsync(500);
+    grid = await flushAndRender();
+    expect(grid.saveStatus).toBe('saved');
+    expect(grid.error).toBeNull();
+
+    vi.useRealTimers();
+  });
+
+  test('DEB-64: beforeunload uses keepalive for dirty flows', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    const listeners = new Map<string, Function[]>();
+    const mockWindow = {
+      addEventListener: vi.fn((event: string, handler: Function) => {
+        if (!listeners.has(event)) listeners.set(event, []);
+        listeners.get(event)!.push(handler);
+      }),
+      removeEventListener: vi.fn((event: string, handler: Function) => {
+        const handlers = listeners.get(event);
+        if (handlers) {
+          const index = handlers.indexOf(handler);
+          if (index !== -1) handlers.splice(index, 1);
+        }
+      }),
+    };
+    vi.stubGlobal('window', mockWindow);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, 'dirty content');
+    grid = renderHook();
+
+    const beforeUnloadHandlers = listeners.get('beforeunload') || [];
+    beforeUnloadHandlers.forEach((handler) => handler());
+
+    expect(apiMock.upsertCellsWithKeepalive).toHaveBeenCalledTimes(1);
+    expect(apiMock.upsertCellsWithKeepalive).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({ content: 'dirty content' }),
+    ]);
   });
 });

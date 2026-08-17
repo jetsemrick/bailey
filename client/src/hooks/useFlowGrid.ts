@@ -9,6 +9,8 @@ import {
 
 const DEBOUNCE_MS = 500;
 
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
 export function useFlowGrid(roundId: string | undefined, _round?: Round | null) {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
@@ -17,6 +19,9 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const [savedFlowRevisions, setSavedFlowRevisions] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** Save status for the active flow (DEB-64). */
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const saveStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cellsLoadRequestRef = useRef(0);
 
   const markFlowSaved = useCallback((flowId: string) => {
@@ -160,15 +165,32 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     const toSave = Array.from(dirty.values());
     dirty.clear();
 
+    // DEB-64: Update save status to 'saving' when starting flush
+    if (flowId === activeFlowIdRef.current) {
+      setSaveStatus('saving');
+    }
+
     const queued = flushQueueRef.current.then(async () => {
       try {
         await api.upsertCells(flowId, toSave);
         setError(null);
         markFlowSaved(flowId);
+        // DEB-64: Update save status to 'saved' on success, auto-hide after 2s
+        if (flowId === activeFlowIdRef.current) {
+          setSaveStatus('saved');
+          if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
+          saveStatusTimerRef.current = setTimeout(() => {
+            setSaveStatus('idle');
+          }, 2000);
+        }
       } catch (err) {
         // DEB-58: restore into this flow's dirty map; newer edits for the same key win
         restoreDirtyCells(flowId, toSave);
         setError(err instanceof Error ? err.message : 'Failed to save cells');
+        // DEB-64: Update save status to 'error' on failure
+        if (flowId === activeFlowIdRef.current) {
+          setSaveStatus('error');
+        }
       }
 
       // Retry if restore (or concurrent edits) left dirty cells for this flow
@@ -195,34 +217,38 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const scheduleSave = useCallback(() => {
     const flowId = activeFlowIdRef.current;
     if (!flowId) return;
+    // DEB-64: Set save status to 'saving' during debounce
+    setSaveStatus('saving');
     // Only debounce this flow — do not cancel retries armed for other flows (DEB-58)
     armFlowTimer(flowId, () => {
       void flush();
     });
   }, [flush, armFlowTimer]);
 
-  // Flush pending changes before page unload
+  // Flush pending changes before page unload (DEB-64: use keepalive for reliability)
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (!activeFlowId) return;
-      const dirty = dirtyByFlowRef.current.get(activeFlowId);
-      if (!dirty || dirty.size === 0) return;
-      const toSave = Array.from(dirty.values());
-      dirty.clear();
-      // Best-effort flush on unload (may not complete for async)
-      api.upsertCells(activeFlowId, toSave).catch(() => {});
+      // Flush all dirty flows, not just the active one
+      for (const [flowId, dirty] of dirtyByFlowRef.current.entries()) {
+        if (dirty.size === 0) continue;
+        const toSave = Array.from(dirty.values());
+        dirty.clear();
+        // Use keepalive fetch so browser doesn't kill the request
+        api.upsertCellsWithKeepalive(flowId, toSave).catch(() => {});
+      }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [activeFlowId]);
+  }, []);
 
   // Clear debounce timers only on unmount (not on tab switch)
   useEffect(() => {
     return () => {
       for (const timer of timerByFlowRef.current.values()) clearTimeout(timer);
       timerByFlowRef.current.clear();
+      if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
     };
   }, []);
 
@@ -489,6 +515,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     cells,
     loading,
     error,
+    saveStatus,
     getCell,
     getCellContent,
     getCellColor,
