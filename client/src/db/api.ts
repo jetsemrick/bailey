@@ -384,6 +384,55 @@ export async function upsertCells(
   if (error) throw error;
 }
 
+/**
+ * Upsert cells with keepalive for reliable unload flush (DEB-64).
+ * Uses fetch with keepalive flag so the browser doesn't kill the request on unload.
+ */
+export async function upsertCellsWithKeepalive(
+  flowId: string,
+  cells: { column_index: number; row_index: number; content: string; color?: CellColor; comment?: string }[]
+): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token || !session.user) {
+    throw new Error('Not authenticated');
+  }
+
+  const userId = session.user.id;
+  const rows = cells.map((c) => ({
+    user_id: userId,
+    flow_id: flowId,
+    column_index: c.column_index,
+    row_index: c.row_index,
+    content: c.content,
+    color: c.color ?? null,
+    comment: c.comment ?? '',
+  }));
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing Supabase environment variables');
+  }
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/flow_cells`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': supabaseAnonKey,
+      'Authorization': `Bearer ${session.access_token}`,
+      'Prefer': 'resolution=merge-duplicates',
+    },
+    body: JSON.stringify(rows),
+    keepalive: true,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to save cells: ${errorText}`);
+  }
+}
+
 export async function deleteCell(id: string): Promise<void> {
   const { error } = await supabase.from('flow_cells').delete().eq('id', id);
   if (error) throw error;
