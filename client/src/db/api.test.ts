@@ -20,6 +20,10 @@ vi.mock('./supabase', () => ({
 
 import {
   createTournament,
+  exportTournament,
+  exportRound,
+  importTournament,
+  importRound,
   listAdminUserSummaries,
   normalizeImportedFlowCells,
   toError,
@@ -258,5 +262,266 @@ describe('authenticated writes', () => {
       ],
       { onConflict: 'flow_id,column_index,row_index' }
     );
+  });
+});
+
+describe('export/import', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+    getSessionMock.mockReset();
+    getUserMock.mockReset();
+  });
+
+  test('exportTournament fetches tournament with nested rounds, flows, and cells', async () => {
+    const singleMock = vi.fn().mockResolvedValue({
+      data: {
+        id: 'tournament-1',
+        user_id: 'user-1',
+        name: 'Nationals',
+        date: '2026-03-15',
+        location: 'Kansas City',
+        tournament_type: 'competitor',
+        team_name: 'Kansas PS',
+        timer_preset: 'high_school',
+        created_at: '2026-03-11T00:00:00.000Z',
+        updated_at: '2026-03-11T00:00:00.000Z',
+        rounds: [
+          {
+            id: 'round-1',
+            user_id: 'user-1',
+            tournament_id: 'tournament-1',
+            round_number: 1,
+            opponent: 'Team B',
+            team_aff: 'Kansas PS',
+            team_neg: 'Team B',
+            side: 'aff',
+            result: 'W',
+            judge: 'Judge A',
+            created_at: '2026-03-11T00:00:00.000Z',
+            updated_at: '2026-03-11T00:00:00.000Z',
+            flow_tabs: [
+              {
+                id: 'flow-1',
+                user_id: 'user-1',
+                round_id: 'round-1',
+                kind: 'plan',
+                label: 'Plan',
+                position: 0,
+                created_at: '2026-03-11T00:00:00.000Z',
+                updated_at: '2026-03-11T00:00:00.000Z',
+                flow_cells: [
+                  {
+                    id: 'cell-1',
+                    user_id: 'user-1',
+                    flow_id: 'flow-1',
+                    column_index: 0,
+                    row_index: 0,
+                    content: 'Plan text',
+                    color: null,
+                    comment: '',
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:00:00.000Z',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      error: null,
+    });
+    const eqMock = vi.fn(() => ({ single: singleMock }));
+    const selectMock = vi.fn(() => ({ eq: eqMock }));
+    fromMock.mockReturnValue({ select: selectMock });
+
+    const exported = await exportTournament('tournament-1');
+
+    expect(fromMock).toHaveBeenCalledWith('tournaments');
+    expect(selectMock).toHaveBeenCalledWith('*, rounds(*, flow_tabs(*, flow_cells(*)))');
+    expect(eqMock).toHaveBeenCalledWith('id', 'tournament-1');
+    expect(exported.tournament).toMatchObject({
+      name: 'Nationals',
+      date: '2026-03-15',
+      location: 'Kansas City',
+    });
+    expect(exported.tournament).not.toHaveProperty('user_id');
+    expect(exported.rounds).toHaveLength(1);
+    expect(exported.rounds[0]).not.toHaveProperty('user_id');
+    expect(exported.rounds[0].flows[0]).not.toHaveProperty('user_id');
+    expect(exported.rounds[0].flows[0].cells[0]).not.toHaveProperty('user_id');
+  });
+
+  test('exportRound fetches a single round with flows and cells', async () => {
+    const singleMock = vi.fn().mockResolvedValue({
+      data: {
+        id: 'round-1',
+        user_id: 'user-1',
+        tournament_id: 'tournament-1',
+        round_number: 1,
+        opponent: 'Team B',
+        team_aff: 'Kansas PS',
+        team_neg: 'Team B',
+        side: 'aff',
+        result: 'W',
+        judge: 'Judge A',
+        created_at: '2026-03-11T00:00:00.000Z',
+        updated_at: '2026-03-11T00:00:00.000Z',
+        flow_tabs: [
+          {
+            id: 'flow-1',
+            user_id: 'user-1',
+            round_id: 'round-1',
+            kind: 'plan',
+            label: 'Plan',
+            position: 0,
+            created_at: '2026-03-11T00:00:00.000Z',
+            updated_at: '2026-03-11T00:00:00.000Z',
+            flow_cells: [],
+          },
+        ],
+      },
+      error: null,
+    });
+    const eqMock = vi.fn(() => ({ single: singleMock }));
+    const selectMock = vi.fn(() => ({ eq: eqMock }));
+    fromMock.mockReturnValue({ select: selectMock });
+
+    const exported = await exportRound('round-1');
+
+    expect(fromMock).toHaveBeenCalledWith('rounds');
+    expect(exported.round).toMatchObject({
+      round_number: 1,
+      opponent: 'Team B',
+      side: 'aff',
+    });
+    expect(exported.round).not.toHaveProperty('user_id');
+  });
+
+  test('importTournament creates tournament with rounds and flows', async () => {
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
+
+    const tournamentSingleMock = vi.fn().mockResolvedValue({
+      data: { id: 'new-tournament-1', user_id: 'user-1', name: 'Imported Tournament' },
+      error: null,
+    });
+    const roundSingleMock = vi.fn().mockResolvedValue({
+      data: { id: 'new-round-1', user_id: 'user-1', tournament_id: 'new-tournament-1' },
+      error: null,
+    });
+    const flowSingleMock = vi.fn().mockResolvedValue({
+      data: { id: 'new-flow-1', user_id: 'user-1', round_id: 'new-round-1' },
+      error: null,
+    });
+
+    const tournamentSelectMock = vi.fn(() => ({ single: tournamentSingleMock }));
+    const roundSelectMock = vi.fn(() => ({ single: roundSingleMock }));
+    const flowSelectMock = vi.fn(() => ({ single: flowSingleMock }));
+
+    const tournamentInsertMock = vi.fn(() => ({ select: tournamentSelectMock }));
+    const roundInsertMock = vi.fn(() => ({ select: roundSelectMock }));
+    const flowInsertMock = vi.fn(() => ({ select: flowSelectMock }));
+    const cellsInsertMock = vi.fn().mockResolvedValue({ error: null });
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'tournaments') return { insert: tournamentInsertMock };
+      if (table === 'rounds') return { insert: roundInsertMock };
+      if (table === 'flow_tabs') return { insert: flowInsertMock };
+      if (table === 'flow_cells') return { insert: cellsInsertMock };
+      return {};
+    });
+
+    const newId = await importTournament({
+      tournament: {
+        id: 'old-tournament-1',
+        name: 'Imported Tournament',
+        date: '2026-03-15',
+        location: 'Kansas City',
+        tournament_type: 'competitor',
+        team_name: 'Kansas PS',
+        timer_preset: 'high_school',
+        created_at: '2026-03-11T00:00:00.000Z',
+        updated_at: '2026-03-11T00:00:00.000Z',
+      },
+      rounds: [
+        {
+          id: 'old-round-1',
+          tournament_id: 'old-tournament-1',
+          round_number: 1,
+          opponent: 'Team B',
+          team_aff: 'Kansas PS',
+          team_neg: 'Team B',
+          side: 'aff',
+          result: 'W',
+          judge: 'Judge A',
+          created_at: '2026-03-11T00:00:00.000Z',
+          updated_at: '2026-03-11T00:00:00.000Z',
+          flows: [],
+        },
+      ],
+    });
+
+    expect(newId).toBe('new-tournament-1');
+    expect(tournamentInsertMock).toHaveBeenCalledWith({
+      user_id: 'user-1',
+      name: 'Imported Tournament',
+      date: '2026-03-15',
+      location: 'Kansas City',
+      tournament_type: 'competitor',
+      team_name: 'Kansas PS',
+      timer_preset: 'high_school',
+    });
+    expect(roundInsertMock).toHaveBeenCalledOnce();
+  });
+
+  test('importRound adds a round to an existing tournament', async () => {
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
+
+    const roundSingleMock = vi.fn().mockResolvedValue({
+      data: { id: 'new-round-1', user_id: 'user-1', tournament_id: 'tournament-1' },
+      error: null,
+    });
+    const roundSelectMock = vi.fn(() => ({ single: roundSingleMock }));
+    const roundInsertMock = vi.fn(() => ({ select: roundSelectMock }));
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'rounds') return { insert: roundInsertMock };
+      if (table === 'flow_tabs') return { insert: vi.fn().mockResolvedValue({ error: null }) };
+      if (table === 'flow_cells') return { insert: vi.fn().mockResolvedValue({ error: null }) };
+      return {};
+    });
+
+    const newId = await importRound('tournament-1', {
+      round: {
+        id: 'old-round-1',
+        tournament_id: 'old-tournament-1',
+        round_number: 2,
+        opponent: 'Team C',
+        team_aff: 'Team C',
+        team_neg: 'Kansas PS',
+        side: 'neg',
+        result: 'L',
+        judge: 'Judge B',
+        created_at: '2026-03-11T00:00:00.000Z',
+        updated_at: '2026-03-11T00:00:00.000Z',
+        flows: [],
+      },
+    });
+
+    expect(newId).toBe('new-round-1');
+    expect(roundInsertMock).toHaveBeenCalledWith({
+      user_id: 'user-1',
+      tournament_id: 'tournament-1',
+      round_number: 2,
+      opponent: 'Team C',
+      team_aff: 'Team C',
+      team_neg: 'Kansas PS',
+      side: 'neg',
+      result: 'L',
+      judge: 'Judge B',
+    });
   });
 });
