@@ -25,6 +25,29 @@ import { shortcutFromKeyboardEvent, type MacroAction } from '../keyboardMacros';
 import { useKeyboardMacrosContext } from '../contexts/KeyboardMacrosContext';
 import { getColumnsForFlow } from './flowColumns';
 import { flowSheetRootClass, type FlowSheetVariant } from './flowSheetVariant';
+import {
+  type SelectionState,
+  selectSingleCell,
+  toggleCell,
+  isSelected,
+  isPrimaryCell,
+  getSelectedCells,
+  getSelectionCount,
+  clearSelection,
+  filterSelectionByColumn,
+  createEmptySelection,
+} from './flowSelection';
+import {
+  copyCells,
+  pasteCells,
+  type ClipboardData,
+} from './flowClipboard';
+import {
+  reorderColumn,
+  canMultiDrag,
+  getMultiDragCells,
+  type CellData,
+} from './flowColumnReorder';
 
 type FlowGridApi = ReturnType<typeof useFlowGrid>;
 
@@ -50,16 +73,16 @@ const HEADER_HEIGHT = 36; // approximate column header height
 
 function SortableCell({
   id, col, row, content, color, side, onUpdate, onColorChange,
-  selected, editing, pendingInput, onClearPendingInput,
+  selected, isPrimary, editing, pendingInput, onClearPendingInput,
   onFocus, onStartEditing, onStopEditing, onNavigate,
   comment, onContextMenu, variant,
 }: {
   id: string; col: number; row: number; content: string; color: CellColor;
   side: 'aff' | 'neg';
   onUpdate: (c: string) => void; onColorChange: (c: CellColor) => void;
-  selected: boolean; editing: boolean;
+  selected: boolean; isPrimary: boolean; editing: boolean;
   pendingInput: string | null; onClearPendingInput: () => void;
-  onFocus: () => void; onStartEditing: () => void; onStopEditing: () => void;
+  onFocus: (e: React.MouseEvent) => void; onStartEditing: () => void; onStopEditing: () => void;
   onNavigate: (d: 'up' | 'down' | 'left' | 'right') => void;
   comment: string;
   onContextMenu?: (e: React.MouseEvent) => void;
@@ -102,6 +125,7 @@ function SortableCell({
         onUpdate={onUpdate}
         onColorChange={onColorChange}
         selected={selected}
+        isPrimary={isPrimary}
         editing={editing}
         pendingInput={pendingInput}
         onClearPendingInput={onClearPendingInput}
@@ -138,7 +162,7 @@ function FlowColumn({
   getCellComment,
   onCellUpdate,
   onColorChange,
-  selectedCell,
+  selection,
   isEditing,
   pendingInput,
   onClearPendingInput,
@@ -159,17 +183,17 @@ function FlowColumn({
   getCellComment: (col: number, row: number) => string;
   onCellUpdate: (col: number, row: number, content: string) => void;
   onColorChange: (col: number, row: number, color: CellColor) => void;
-  selectedCell: { col: number; row: number } | null;
+  selection: SelectionState;
   isEditing: boolean;
   pendingInput: string | null;
   onClearPendingInput: () => void;
-  onFocusCell: (col: number, row: number) => void;
+  onFocusCell: (col: number, row: number, e: React.MouseEvent) => void;
   onStartEditing: () => void;
   onStopEditing: () => void;
   onNavigate: (from: { col: number; row: number }, dir: 'up' | 'down' | 'left' | 'right') => void;
   onContextMenu: (e: React.MouseEvent, col: number, row: number) => void;
 }) {
-  const isFocusedColumn = selectedCell?.col === dataCol;
+  const isFocusedColumn = selection.primaryCell?.col === dataCol;
   const items = useMemo(
     () => Array.from({ length: rowCount }, (_, r) => `${dataCol}:${r}`),
     [dataCol, rowCount]
@@ -193,30 +217,36 @@ function FlowColumn({
       </div>
       {/* Sortable cells */}
       <SortableContext items={items} strategy={verticalListSortingStrategy}>
-        {items.map((itemId, rowIdx) => (
-          <SortableCell
-            key={itemId}
-            id={itemId}
-            col={dataCol}
-            row={rowIdx}
-            content={getCellContent(dataCol, rowIdx)}
-            color={getCellColor(dataCol, rowIdx)}
-            side={side}
-            onUpdate={(c) => onCellUpdate(dataCol, rowIdx, c)}
-            onColorChange={(c) => onColorChange(dataCol, rowIdx, c)}
-            selected={selectedCell?.col === dataCol && selectedCell?.row === rowIdx}
-            editing={selectedCell?.col === dataCol && selectedCell?.row === rowIdx && isEditing}
-            pendingInput={selectedCell?.col === dataCol && selectedCell?.row === rowIdx ? pendingInput : null}
-            onClearPendingInput={onClearPendingInput}
-            onFocus={() => onFocusCell(dataCol, rowIdx)}
-            onStartEditing={onStartEditing}
-            onStopEditing={onStopEditing}
-            onNavigate={(d) => onNavigate({ col: dataCol, row: rowIdx }, d)}
-            comment={getCellComment(dataCol, rowIdx)}
-            onContextMenu={(e) => onContextMenu(e, dataCol, rowIdx)}
-            variant={variant}
-          />
-        ))}
+        {items.map((itemId, rowIdx) => {
+          const selected = isSelected(selection, dataCol, rowIdx);
+          const primary = isPrimaryCell(selection, dataCol, rowIdx);
+          const editing = primary && isEditing;
+          return (
+            <SortableCell
+              key={itemId}
+              id={itemId}
+              col={dataCol}
+              row={rowIdx}
+              content={getCellContent(dataCol, rowIdx)}
+              color={getCellColor(dataCol, rowIdx)}
+              side={side}
+              onUpdate={(c) => onCellUpdate(dataCol, rowIdx, c)}
+              onColorChange={(c) => onColorChange(dataCol, rowIdx, c)}
+              selected={selected}
+              isPrimary={primary}
+              editing={editing}
+              pendingInput={primary ? pendingInput : null}
+              onClearPendingInput={onClearPendingInput}
+              onFocus={(e) => onFocusCell(dataCol, rowIdx, e)}
+              onStartEditing={onStartEditing}
+              onStopEditing={onStopEditing}
+              onNavigate={(d) => onNavigate({ col: dataCol, row: rowIdx }, d)}
+              comment={getCellComment(dataCol, rowIdx)}
+              onContextMenu={(e) => onContextMenu(e, dataCol, rowIdx)}
+              variant={variant}
+            />
+          );
+        })}
       </SortableContext>
     </div>
   );
@@ -311,7 +341,8 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   } = grid;
 
   const undoRedo = useUndoRedo();
-  const [selectedCell, setSelectedCell] = useState<{ col: number; row: number } | null>(null);
+  const [selection, setSelection] = useState<SelectionState>(createEmptySelection());
+  const [clipboard, setClipboard] = useState<ClipboardData | null>(null);
   const [contextMenu, setContextMenu] = useState<{ col: number; row: number; rect: DOMRect } | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [pendingInput, setPendingInput] = useState<string | null>(null);
@@ -320,7 +351,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   const [containerHeight, setContainerHeight] = useState(0);
   const hasScrolledToEndRef = useRef(false);
   const { macros } = useKeyboardMacrosContext();
-  const selectedCellRef = useRef<{ col: number; row: number } | null>(null);
+  const selectionRef = useRef<SelectionState>(selection);
 
   // Track container height to fill viewport with rows
   useEffect(() => {
@@ -352,8 +383,9 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   // Clear undo/redo stack and selection when switching flow tabs
   useEffect(() => {
     undoRedo.clear();
-    setSelectedCell(null);
+    setSelection(createEmptySelection());
     setIsEditing(false);
+    setClipboard(null);
   }, [activeFlowId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sensors = useSensors(
@@ -376,20 +408,20 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   }, [getColumnRowCount, activeFlowId, grid.cells, minRowsFromHeight]);
 
   useEffect(() => {
-    selectedCellRef.current = selectedCell;
-  }, [selectedCell]);
+    selectionRef.current = selection;
+  }, [selection]);
 
-  // Keep selected cell fully visible and never under sticky column header
+  // Keep primary cell fully visible and never under sticky column header
   useEffect(() => {
-    if (!selectedCell || !containerRef.current) return;
+    if (!selection.primaryCell || !containerRef.current) return;
     const containerEl = containerRef.current;
     const el = containerEl.querySelector<HTMLElement>(
-      `[data-cell-id="${selectedCell.col}:${selectedCell.row}"]`
+      `[data-cell-id="${selection.primaryCell.col}:${selection.primaryCell.row}"]`
     );
     if (!el) return;
 
     const headerEl = containerEl.querySelector<HTMLElement>(
-      `[data-column-header="${selectedCell.col}"]`
+      `[data-column-header="${selection.primaryCell.col}"]`
     );
 
     if (!headerEl) {
@@ -411,7 +443,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     if (cellRect.bottom > bottomBoundary) {
       containerEl.scrollBy({ top: cellRect.bottom - bottomBoundary, behavior: 'smooth' });
     }
-  }, [selectedCell]);
+  }, [selection.primaryCell]);
 
   // Cell update with undo tracking
   const handleCellUpdate = useCallback(
@@ -487,18 +519,20 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
           }
         }
       }
-      setSelectedCell({ col, row });
+      setSelection(selectSingleCell(col, row));
     },
     [maxRows, dataCols]
   );
 
   const runMacro = useCallback(
     (actions: MacroAction[]) => {
-      let cursor = selectedCellRef.current;
+      let cursor = selectionRef.current.primaryCell;
       const setCursor = (next: { col: number; row: number } | null) => {
-        cursor = next;
-        selectedCellRef.current = next;
-        setSelectedCell(next);
+        if (next) {
+          cursor = next;
+          selectionRef.current = selectSingleCell(next.col, next.row);
+          setSelection(selectSingleCell(next.col, next.row));
+        }
       };
 
       const getMeaningfulRows = (col: number, startRow: number): number[] => {
@@ -628,30 +662,85 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     return map;
   }, [macros]);
 
-  // Keyboard undo/redo + save + arrow key navigation when selected (not editing)
+  // Keyboard undo/redo + copy/paste + save + arrow key navigation when selected (not editing)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
+      
+      // Undo
       if (mod && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        const edit = undoRedo.undo();
-        if (edit) {
-          updateCell(edit.col, edit.row, edit.previousContent, edit.previousColor as CellColor);
-          setCellComment(edit.col, edit.row, edit.previousComment);
+        const entry = undoRedo.undo();
+        if (entry) {
+          if (undoRedo.isBatchEdit(entry)) {
+            for (const edit of entry.edits) {
+              updateCell(edit.col, edit.row, edit.previousContent, edit.previousColor as CellColor);
+              setCellComment(edit.col, edit.row, edit.previousComment);
+            }
+          } else {
+            updateCell(entry.col, entry.row, entry.previousContent, entry.previousColor as CellColor);
+            setCellComment(entry.col, entry.row, entry.previousComment);
+          }
         }
+        return;
       }
+      
+      // Redo
       if (mod && e.key === 'z' && e.shiftKey) {
         e.preventDefault();
-        const edit = undoRedo.redo();
-        if (edit) {
-          updateCell(edit.col, edit.row, edit.newContent, edit.newColor as CellColor);
-          setCellComment(edit.col, edit.row, edit.newComment);
+        const entry = undoRedo.redo();
+        if (entry) {
+          if (undoRedo.isBatchEdit(entry)) {
+            for (const edit of entry.edits) {
+              updateCell(edit.col, edit.row, edit.newContent, edit.newColor as CellColor);
+              setCellComment(edit.col, edit.row, edit.newComment);
+            }
+          } else {
+            updateCell(entry.col, entry.row, entry.newContent, entry.newColor as CellColor);
+            setCellComment(entry.col, entry.row, entry.newComment);
+          }
         }
+        return;
       }
+      
+      // Copy (only when not editing)
+      if (mod && e.key === 'c' && !isEditing) {
+        e.preventDefault();
+        const data = copyCells(selectionRef.current, getCellContent, getCellColor, getCellComment);
+        setClipboard(data);
+        return;
+      }
+      
+      // Paste (only when not editing and we have a primary cell)
+      if (mod && e.key === 'v' && !isEditing && clipboard && selectionRef.current.primaryCell) {
+        e.preventDefault();
+        const updates = pasteCells(clipboard, selectionRef.current.primaryCell);
+        
+        // Capture previous state for undo
+        const edits = updates.map(u => ({
+          col: u.col,
+          row: u.row,
+          previousContent: getCellContent(u.col, u.row),
+          newContent: u.content,
+          previousColor: getCellColor(u.col, u.row),
+          newColor: u.color,
+          previousComment: getCellComment(u.col, u.row),
+          newComment: u.comment,
+        }));
+        
+        undoRedo.pushBatch(edits);
+        bulkUpdateCells(updates);
+        return;
+      }
+      
+      // Save
       if (mod && e.key === 's') {
         e.preventDefault();
         grid.saveNow();
+        return;
       }
+      
+      // Macro shortcuts
       const shortcut = shortcutFromKeyboardEvent(e);
       if (shortcut) {
         const actions = macroActionsByShortcut.get(shortcut);
@@ -664,41 +753,58 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
           return;
         }
       }
+      
       // Arrow key navigation when cell is selected but not editing
       // Skip if user is focused on an input/textarea element elsewhere on the page
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || (target.isContentEditable && !containerRef.current?.contains(target))) {
         return;
       }
-      if (selectedCell && !isEditing) {
+      
+      if (selection.primaryCell && !isEditing) {
+        // Delete/Backspace - clear all selected cells
         if ((e.key === 'Delete' || e.key === 'Backspace') && !mod) {
-          const { col, row } = selectedCell;
-          const prevContent = getCellContent(col, row);
-          const prevColor = getCellColor(col, row);
-          const prevComment = getCellComment(col, row);
-          const hasAny =
-            prevContent.trim() !== '' || prevColor !== null || prevComment.trim() !== '';
-          if (hasAny) {
+          const cells = getSelectedCells(selectionRef.current);
+          if (cells.length === 0) return;
+          
+          const edits = cells.map(cell => ({
+            col: cell.col,
+            row: cell.row,
+            previousContent: getCellContent(cell.col, cell.row),
+            newContent: '',
+            previousColor: getCellColor(cell.col, cell.row),
+            newColor: null as CellColor,
+            previousComment: getCellComment(cell.col, cell.row),
+            newComment: '',
+          }));
+          
+          const hasAnyContent = edits.some(
+            edit => edit.previousContent.trim() !== '' || edit.previousColor !== null || edit.previousComment.trim() !== ''
+          );
+          
+          if (hasAnyContent) {
             e.preventDefault();
-            undoRedo.pushEdit({
-              col, row,
-              previousContent: prevContent, newContent: '',
-              previousColor: prevColor, newColor: null,
-              previousComment: prevComment, newComment: '',
-            });
-            updateCell(col, row, '', null);
-            setCellComment(col, row, '');
+            if (cells.length === 1) {
+              undoRedo.pushEdit(edits[0]);
+            } else {
+              undoRedo.pushBatch(edits);
+            }
+            
+            for (const edit of edits) {
+              updateCell(edit.col, edit.row, '', null);
+              setCellComment(edit.col, edit.row, '');
+            }
           }
         } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
           e.preventDefault();
           const dir = e.key.replace('Arrow', '').toLowerCase() as 'up' | 'down' | 'left' | 'right';
-          navigate(selectedCell, dir);
+          navigate(selection.primaryCell, dir);
         } else if (e.key === 'Enter') {
           e.preventDefault();
           setIsEditing(true);
         } else if (e.key === 'Escape') {
           e.preventDefault();
-          setSelectedCell(null);
+          setSelection(createEmptySelection());
         } else if (
           e.key.length === 1 &&
           !e.ctrlKey &&
@@ -716,7 +822,8 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     return () => window.removeEventListener('keydown', handler);
   }, [
     undoRedo, updateCell, setCellComment, getCellContent, getCellColor, getCellComment,
-    grid, selectedCell, isEditing, navigate, macroActionsByShortcut, runMacro,
+    grid, selection, isEditing, navigate, macroActionsByShortcut, runMacro,
+    clipboard, bulkUpdateCells,
   ]);
 
   // DnD handlers
@@ -738,25 +845,69 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       const toCol = overData.col;
       const toRow = overData.row;
 
-      // Same column: reorder
+      // Same column: check for multi-drag
       if (fromCol === toCol) {
-        const colRows: { row: number; content: string; color: CellColor; comment: string }[] = [];
-        for (let r = 0; r < maxRows; r++) {
-          colRows.push({
-            row: r,
-            content: getCellContent(fromCol, r),
-            color: getCellColor(fromCol, r),
-            comment: getCellComment(fromCol, r),
-          });
+        const selectedCells = getSelectedCells(selectionRef.current);
+        const inSameColumn = canMultiDrag(selectedCells, fromCol);
+        const isDraggingSelected = isSelected(selectionRef.current, fromCol, fromRow);
+        
+        if (inSameColumn && isDraggingSelected && selectedCells.length > 1) {
+          // Multi-cell drag within same column
+          const draggedRows = getMultiDragCells(selectedCells, fromCol);
+          const columnData: CellData[] = [];
+          
+          for (let r = 0; r < maxRows; r++) {
+            columnData.push({
+              row: r,
+              content: getCellContent(fromCol, r),
+              color: getCellColor(fromCol, r),
+              comment: getCellComment(fromCol, r),
+            });
+          }
+          
+          const reordered = reorderColumn(columnData, draggedRows, toRow);
+          const updates = reordered.map(c => ({
+            col: fromCol,
+            row: c.row,
+            content: c.content,
+            color: c.color,
+            comment: c.comment,
+          }));
+          
+          // Capture edits for batch undo
+          const edits = updates.map(u => ({
+            col: u.col,
+            row: u.row,
+            previousContent: getCellContent(u.col, u.row),
+            newContent: u.content,
+            previousColor: getCellColor(u.col, u.row),
+            newColor: u.color,
+            previousComment: getCellComment(u.col, u.row),
+            newComment: u.comment,
+          }));
+          
+          undoRedo.pushBatch(edits);
+          bulkUpdateCells(updates);
+        } else {
+          // Single cell reorder in same column
+          const colRows: { row: number; content: string; color: CellColor; comment: string }[] = [];
+          for (let r = 0; r < maxRows; r++) {
+            colRows.push({
+              row: r,
+              content: getCellContent(fromCol, r),
+              color: getCellColor(fromCol, r),
+              comment: getCellComment(fromCol, r),
+            });
+          }
+          const [moved] = colRows.splice(fromRow, 1);
+          colRows.splice(toRow, 0, moved);
+          const updates = colRows.map((c, i) => ({
+            col: fromCol, row: i, content: c.content, color: c.color, comment: c.comment,
+          }));
+          bulkUpdateCells(updates);
         }
-        const [moved] = colRows.splice(fromRow, 1);
-        colRows.splice(toRow, 0, moved);
-        const updates = colRows.map((c, i) => ({
-          col: fromCol, row: i, content: c.content, color: c.color, comment: c.comment,
-        }));
-        bulkUpdateCells(updates);
       } else {
-        // Cross-column move
+        // Cross-column move (single cell only)
         const content = getCellContent(fromCol, fromRow);
         const color = getCellColor(fromCol, fromRow);
         const comment = getCellComment(fromCol, fromRow);
@@ -767,9 +918,9 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       }
 
       // Keep focus on the moved cell so keyboard editing continues at new position.
-      setSelectedCell({ col: toCol, row: toRow });
+      setSelection(selectSingleCell(toCol, toRow));
     },
-    [getCellContent, getCellColor, getCellComment, maxRows, bulkUpdateCells, updateCell, setCellComment]
+    [getCellContent, getCellColor, getCellComment, maxRows, bulkUpdateCells, updateCell, setCellComment, undoRedo]
   );
 
   if (!activeFlowId) {
@@ -787,7 +938,14 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div ref={containerRef} className={`flex-1 overflow-auto min-h-0 ${flowSheetRootClass(variant)}`}>
+      <div ref={containerRef} className={`flex-1 overflow-auto min-h-0 ${flowSheetRootClass(variant)} relative`}>
+        {/* Selection count indicator */}
+        {getSelectionCount(selection) > 1 && (
+          <div className="absolute top-2 right-2 z-50 px-2 py-1 bg-accent text-accent-foreground text-xs font-medium rounded shadow-sm pointer-events-none">
+            {getSelectionCount(selection)} cells selected
+          </div>
+        )}
+        
         <div className={`flex min-w-[800px] min-h-full ${variant === 'sharp' ? 'border-t border-l border-card-04' : ''}`}>
           {flowColumns.map(({ label, dataCol, side }) => (
             <FlowColumn
@@ -802,12 +960,18 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
               getCellComment={getCellComment}
               onCellUpdate={handleCellUpdate}
               onColorChange={handleColorChange}
-              selectedCell={selectedCell}
+              selection={selection}
               isEditing={isEditing}
               pendingInput={pendingInput}
               onClearPendingInput={() => setPendingInput(null)}
-              onFocusCell={(col, row) => {
-                setSelectedCell({ col, row });
+              onFocusCell={(col, row, e) => {
+                if (e.metaKey || e.ctrlKey) {
+                  // Cmd/Ctrl-click: toggle cell in selection
+                  setSelection(toggleCell(selection, col, row));
+                } else {
+                  // Plain click: select single cell
+                  setSelection(selectSingleCell(col, row));
+                }
                 setIsEditing(false);
               }}
               onStartEditing={() => setIsEditing(true)}
@@ -865,4 +1029,16 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       )}
     </DndContext>
   );
+}
+
+// Dev-only test hook for e2e tests
+if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+  (window as any).__baileyFlowActions = {
+    copy: (getCellContent: (col: number, row: number) => string, getCellColor: (col: number, row: number) => CellColor, getCellComment: (col: number, row: number) => string, selection: SelectionState) => {
+      return copyCells(selection, getCellContent, getCellColor, getCellComment);
+    },
+    paste: (clipboard: ClipboardData, anchor: { col: number; row: number }) => {
+      return pasteCells(clipboard, anchor);
+    },
+  };
 }
