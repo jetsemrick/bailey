@@ -158,6 +158,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   // DEB-59: cells are claimed synchronously and each write is queued behind the
   // last, so the returned promise settles only once every earlier write has
   // landed. Readers that await a flush (DecisionView, Ctrl+S) never race a save.
+  // DEB-66: delete empty cells instead of upserting blanks.
   const flushFlowCells = useCallback((flowId: string): Promise<void> => {
     const dirty = dirtyByFlowRef.current.get(flowId);
     if (!dirty || dirty.size === 0) return flushQueueRef.current;
@@ -172,7 +173,32 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
 
     const queued = flushQueueRef.current.then(async () => {
       try {
-        await api.upsertCells(flowId, toSave);
+        // DEB-66: split into non-empty cells (upsert) and empty cells (delete)
+        const nonEmptyCells: typeof toSave = [];
+        const emptyCellCoords: { column_index: number; row_index: number }[] = [];
+
+        for (const cell of toSave) {
+          const isEmpty =
+            cell.content.trim() === '' &&
+            cell.color === null &&
+            cell.comment.trim() === '';
+          if (isEmpty) {
+            emptyCellCoords.push({
+              column_index: cell.column_index,
+              row_index: cell.row_index,
+            });
+          } else {
+            nonEmptyCells.push(cell);
+          }
+        }
+
+        if (nonEmptyCells.length > 0) {
+          await api.upsertCells(flowId, nonEmptyCells);
+        }
+        if (emptyCellCoords.length > 0) {
+          await api.deleteCellsByCoordinates(flowId, emptyCellCoords);
+        }
+
         setError(null);
         markFlowSaved(flowId);
         // DEB-64: Update save status to 'saved' on success, auto-hide after 2s
@@ -233,8 +259,32 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
         if (dirty.size === 0) continue;
         const toSave = Array.from(dirty.values());
         dirty.clear();
-        // Use keepalive fetch so browser doesn't kill the request
-        api.upsertCellsWithKeepalive(flowId, toSave).catch(() => {});
+        
+        // DEB-66: split into non-empty cells (upsert) and empty cells (delete)
+        const nonEmptyCells: typeof toSave = [];
+        const emptyCellCoords: { column_index: number; row_index: number }[] = [];
+        
+        for (const cell of toSave) {
+          const isEmpty =
+            cell.content.trim() === '' &&
+            cell.color === null &&
+            cell.comment.trim() === '';
+          if (isEmpty) {
+            emptyCellCoords.push({
+              column_index: cell.column_index,
+              row_index: cell.row_index,
+            });
+          } else {
+            nonEmptyCells.push(cell);
+          }
+        }
+        
+        if (nonEmptyCells.length > 0) {
+          api.upsertCellsWithKeepalive(flowId, nonEmptyCells).catch(() => {});
+        }
+        if (emptyCellCoords.length > 0) {
+          api.deleteCellsByCoordinatesWithKeepalive(flowId, emptyCellCoords).catch(() => {});
+        }
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
