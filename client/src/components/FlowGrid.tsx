@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, memo } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -48,7 +48,7 @@ const HEADER_HEIGHT = 36; // approximate column header height
 
 // ── Sortable cell wrapper ────────────────────────────────────
 
-function SortableCell({
+const SortableCell = memo(function SortableCell({
   id, col, row, content, color, side, onUpdate, onColorChange,
   selected, editing, pendingInput, onClearPendingInput,
   onFocus, onStartEditing, onStopEditing, onNavigate,
@@ -124,11 +124,11 @@ function SortableCell({
       )}
     </div>
   );
-}
+});
 
 // ── Single column ────────────────────────────────────────────
 
-function FlowColumn({
+const FlowColumn = memo(function FlowColumn({
   dataCol,
   label,
   side,
@@ -220,7 +220,7 @@ function FlowColumn({
       </SortableContext>
     </div>
   );
-}
+});
 
 // ── Main grid ────────────────────────────────────────────────
 
