@@ -341,14 +341,9 @@ export async function deleteFlow(id: string): Promise<void> {
 }
 
 export async function reorderFlows(flows: { id: string; display_order: number }[]): Promise<void> {
-  // Supabase doesn't support batch update natively, so we do sequential updates
-  for (const f of flows) {
-    const { error } = await supabase
-      .from('flow_tabs')
-      .update({ display_order: f.display_order })
-      .eq('id', f.id);
-    if (error) throw error;
-  }
+  if (flows.length === 0) return;
+  const { error } = await supabase.rpc('reorder_flow_tabs', { updates: flows });
+  if (error) throw toError(error, 'Failed to reorder flow tabs');
 }
 
 // ── Cells ────────────────────────────────────────────────────
