@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import TournamentForm from '../components/TournamentForm';
 import ConfirmModal from '../components/ConfirmModal';
+import ImportExport from '../components/ImportExport';
 import { useTournaments } from '../hooks/useTournaments';
 import { useAuth } from '../auth/AuthContext';
 
@@ -46,12 +47,20 @@ export default function HomePage() {
     }
   };
 
+  const handleTournamentImportComplete = (tournamentId: string) => {
+    navigate(`/tournament/${tournamentId}`);
+  };
+
   return (
     <Layout>
       <div className="flex-1 overflow-auto p-6 max-w-5xl mx-auto w-full">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold">Tournaments</h2>
           <div className="flex items-center gap-2">
+            <ImportExport
+              mode="tournament"
+              onImportComplete={handleTournamentImportComplete}
+            />
             <button
               onClick={() => setShowForm(true)}
               className="px-4 py-1.5 bg-accent text-white rounded text-sm font-medium hover:bg-accent/90 transition-colors"
