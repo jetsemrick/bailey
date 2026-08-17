@@ -394,6 +394,23 @@ export async function deleteCellsByFlow(flowId: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function deleteCellsByCoordinates(
+  flowId: string,
+  coordinates: { column_index: number; row_index: number }[]
+): Promise<void> {
+  if (coordinates.length === 0) return;
+  
+  for (const coord of coordinates) {
+    const { error } = await supabase
+      .from('flow_cells')
+      .delete()
+      .eq('flow_id', flowId)
+      .eq('column_index', coord.column_index)
+      .eq('row_index', coord.row_index);
+    if (error) throw error;
+  }
+}
+
 // ── Flow Analytics ───────────────────────────────────────────
 
 export async function getFlowAnalytics(flowId: string): Promise<FlowAnalytics | null> {
