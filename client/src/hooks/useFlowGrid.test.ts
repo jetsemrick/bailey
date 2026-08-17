@@ -98,6 +98,7 @@ const apiMock = vi.hoisted(() => ({
   listFlows: vi.fn(),
   listCells: vi.fn(),
   upsertCells: vi.fn(),
+  deleteCellsByCoordinates: vi.fn(),
 }));
 
 vi.mock('react', () => hookHarness.react);
@@ -183,6 +184,7 @@ describe('useFlowGrid', () => {
     });
     apiMock.listFlows.mockResolvedValue([makeFlow('flow-a'), makeFlow('flow-b')]);
     apiMock.upsertCells.mockResolvedValue(undefined);
+    apiMock.deleteCellsByCoordinates.mockResolvedValue(undefined);
   });
 
   test('ignores stale cells when tab loads resolve out of order', async () => {
@@ -524,5 +526,101 @@ describe('useFlowGrid', () => {
     expect(apiMock.upsertCells).toHaveBeenCalledTimes(2);
     expect(apiMock.upsertCells.mock.calls.every(([, cells]) => cells.length > 0)).toBe(true);
     vi.useRealTimers();
+  });
+
+  test('DEB-66: clearing a cell removes the DB row after flush', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, 'some content');
+    grid = renderHook();
+    
+    await grid.saveNow();
+    grid = await flushAndRender();
+    
+    expect(apiMock.upsertCells).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({ column_index: 0, row_index: 0, content: 'some content' }),
+    ]);
+    expect(apiMock.deleteCellsByCoordinates).not.toHaveBeenCalled();
+    
+    grid.updateCell(0, 0, '');
+    grid = renderHook();
+    
+    await grid.saveNow();
+    grid = await flushAndRender();
+    
+    expect(apiMock.deleteCellsByCoordinates).toHaveBeenCalledWith('flow-a', [
+      { column_index: 0, row_index: 0 },
+    ]);
+  });
+
+  test('DEB-66: empty cells are deleted, not upserted', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, '');
+    grid.updateCell(0, 1, '   ');
+    grid.updateCell(1, 0, 'actual content');
+    grid = renderHook();
+    
+    await grid.saveNow();
+    grid = await flushAndRender();
+    
+    expect(apiMock.upsertCells).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({ column_index: 1, row_index: 0, content: 'actual content' }),
+    ]);
+    expect(apiMock.deleteCellsByCoordinates).toHaveBeenCalledWith('flow-a', [
+      { column_index: 0, row_index: 0 },
+      { column_index: 0, row_index: 1 },
+    ]);
+  });
+
+  test('DEB-66: cells with color or comment are not deleted even if content is empty', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, '', 'yellow');
+    grid = renderHook();
+    grid.setCellComment(0, 1, 'important note');
+    grid = renderHook();
+    
+    await grid.saveNow();
+    grid = await flushAndRender();
+    
+    expect(apiMock.upsertCells).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({ column_index: 0, row_index: 0, content: '', color: 'yellow' }),
+      expect.objectContaining({ column_index: 0, row_index: 1, content: '', comment: 'important note' }),
+    ]);
+    expect(apiMock.deleteCellsByCoordinates).not.toHaveBeenCalled();
+  });
+
+  test('DEB-66: insert-row macros do not permanently inflate empty rows', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.bulkUpdateCells([
+      { col: 0, row: 0, content: '', color: null },
+      { col: 0, row: 1, content: '', color: null },
+      { col: 0, row: 2, content: '', color: null },
+      { col: 0, row: 3, content: '', color: null },
+      { col: 0, row: 4, content: '', color: null },
+    ]);
+    grid = renderHook();
+    
+    await grid.saveNow();
+    grid = await flushAndRender();
+    
+    expect(apiMock.upsertCells).not.toHaveBeenCalled();
+    expect(apiMock.deleteCellsByCoordinates).toHaveBeenCalledWith('flow-a', [
+      { column_index: 0, row_index: 0 },
+      { column_index: 0, row_index: 1 },
+      { column_index: 0, row_index: 2 },
+      { column_index: 0, row_index: 3 },
+      { column_index: 0, row_index: 4 },
+    ]);
   });
 });
