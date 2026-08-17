@@ -519,41 +519,118 @@ export function normalizeImportedFlowCells(cells: ImportedFlowCell[]): ImportedF
   });
 }
 
+/**
+ * Shared helper to insert flows and their cells into a round.
+ * Batch inserts flow_tabs, then batch inserts all cells across all flows.
+ */
+async function insertFlowsAndCells(
+  userId: string,
+  roundId: string,
+  flows: (Omit<Flow, 'user_id'> & { cells: Omit<FlowCell, 'user_id'>[] })[]
+): Promise<void> {
+  if (flows.length === 0) return;
+
+  const flowRows = flows.map((flow) => ({
+    user_id: userId,
+    round_id: roundId,
+    position_name: flow.position_name,
+    initiated_by: flow.initiated_by,
+    display_order: flow.display_order,
+  }));
+
+  const { data: insertedFlows, error: fErr } = await supabase
+    .from('flow_tabs')
+    .insert(flowRows)
+    .select('id');
+  if (fErr) {
+    const cacheErr = mapFlowTabsSchemaCacheError(fErr);
+    if (cacheErr) throw cacheErr;
+    throw fErr;
+  }
+
+  const allCellRows: Array<{
+    user_id: string;
+    flow_id: string;
+    column_index: number;
+    row_index: number;
+    content: string;
+    color: CellColor;
+    comment: string;
+  }> = [];
+
+  insertedFlows.forEach((newFlow, index) => {
+    const normalizedCells = normalizeImportedFlowCells(flows[index].cells);
+    normalizedCells.forEach((c) => {
+      allCellRows.push({
+        user_id: userId,
+        flow_id: newFlow.id,
+        column_index: c.column_index,
+        row_index: c.row_index,
+        content: c.content,
+        color: c.color,
+        comment: c.comment ?? '',
+      });
+    });
+  });
+
+  if (allCellRows.length > 0) {
+    const { error: cErr } = await supabase.from('flow_cells').insert(allCellRows);
+    if (cErr) throw cErr;
+  }
+}
+
 export async function exportTournament(tournamentId: string): Promise<ExportedTournament> {
-  const tournament = await getTournament(tournamentId);
-  const rounds = await listRounds(tournamentId);
+  const { data, error } = await supabase
+    .from('tournaments')
+    .select('*, rounds(*, flow_tabs(*, flow_cells(*)))')
+    .eq('id', tournamentId)
+    .single();
+  if (error) throw error;
 
-  const roundsWithFlows = await Promise.all(
-    rounds.map(async (round) => {
-      const flows = await listFlows(round.id);
-      const flowsWithCells = await Promise.all(
-        flows.map(async (flow) => {
-          const cells = await listCells(flow.id);
-          const { user_id: _u, ...flowData } = flow;
-          return { ...flowData, cells: cells.map(({ user_id: _u2, ...c }) => c) };
-        })
-      );
-      const { user_id: _u3, ...roundData } = round;
-      return { ...roundData, flows: flowsWithCells };
-    })
-  );
+  const raw = data as Tournament & {
+    rounds: (Round & {
+      flow_tabs: (Flow & {
+        flow_cells: FlowCell[];
+      })[];
+    })[];
+  };
 
-  const { user_id: _u4, ...tournamentData } = tournament;
-  return { tournament: tournamentData, rounds: roundsWithFlows };
+  const { user_id: _u1, rounds: rawRounds, ...tournamentData } = raw;
+  const rounds = rawRounds.map((round) => {
+    const { user_id: _u2, flow_tabs: rawFlows, ...roundData } = round;
+    const flows = rawFlows.map((flow) => {
+      const { user_id: _u3, flow_cells: rawCells, ...flowData } = flow;
+      const cells = rawCells.map(({ user_id: _u4, ...c }) => c);
+      return { ...normalizeFlowTabKind(flowData as Flow), cells };
+    });
+    return { ...roundData, flows };
+  });
+
+  return { tournament: tournamentData, rounds };
 }
 
 export async function exportRound(roundId: string): Promise<ExportedRound> {
-  const round = await getRound(roundId);
-  const flows = await listFlows(roundId);
-  const flowsWithCells = await Promise.all(
-    flows.map(async (flow) => {
-      const cells = await listCells(flow.id);
-      const { user_id: _u, ...flowData } = flow;
-      return { ...flowData, cells: cells.map(({ user_id: _u2, ...c }) => c) };
-    })
-  );
-  const { user_id: _u3, ...roundData } = round;
-  return { round: { ...roundData, flows: flowsWithCells } };
+  const { data, error } = await supabase
+    .from('rounds')
+    .select('*, flow_tabs(*, flow_cells(*))')
+    .eq('id', roundId)
+    .single();
+  if (error) throw error;
+
+  const raw = data as Round & {
+    flow_tabs: (Flow & {
+      flow_cells: FlowCell[];
+    })[];
+  };
+
+  const { user_id: _u1, flow_tabs: rawFlows, ...roundData } = raw;
+  const flows = rawFlows.map((flow) => {
+    const { user_id: _u2, flow_cells: rawCells, ...flowData } = flow;
+    const cells = rawCells.map(({ user_id: _u3, ...c }) => c);
+    return { ...normalizeFlowTabKind(flowData as Flow), cells };
+  });
+
+  return { round: { ...roundData, flows } };
 }
 
 export async function importRound(
@@ -578,41 +655,7 @@ export async function importRound(
     .single();
   if (rErr) throw rErr;
 
-  for (const flow of data.round.flows) {
-    // Never send tab_kind in the REST body: PostgREST can reject unknown columns (PGRST204) when its
-    // schema cache is stale. DB default is standard; trigger 016 sets tab_kind=cx when position_name='CX'.
-    const { data: newFlow, error: fErr } = await supabase
-      .from('flow_tabs')
-      .insert({
-        user_id: userId,
-        round_id: newRound.id,
-        position_name: flow.position_name,
-        initiated_by: flow.initiated_by,
-        display_order: flow.display_order,
-      })
-      .select()
-      .single();
-    if (fErr) {
-      const cacheErr = mapFlowTabsSchemaCacheError(fErr);
-      if (cacheErr) throw cacheErr;
-      throw fErr;
-    }
-
-    const normalizedCells = normalizeImportedFlowCells(flow.cells);
-    if (normalizedCells.length > 0) {
-      const cellRows = normalizedCells.map((c) => ({
-        user_id: userId,
-        flow_id: newFlow.id,
-        column_index: c.column_index,
-        row_index: c.row_index,
-        content: c.content,
-        color: c.color,
-        comment: c.comment ?? '',
-      }));
-      const { error: cErr } = await supabase.from('flow_cells').insert(cellRows);
-      if (cErr) throw cErr;
-    }
-  }
+  await insertFlowsAndCells(userId, newRound.id, data.round.flows);
 
   return newRound.id;
 }
@@ -620,7 +663,6 @@ export async function importRound(
 export async function importTournament(data: ExportedTournament): Promise<string> {
   const userId = await uid();
 
-  // Create tournament with new ID
   const { data: newTournament, error: tErr } = await supabase
     .from('tournaments')
     .insert({
@@ -654,41 +696,7 @@ export async function importTournament(data: ExportedTournament): Promise<string
       .single();
     if (rErr) throw rErr;
 
-    for (const flow of round.flows) {
-      // Never send tab_kind in the REST body: PostgREST can reject unknown columns (PGRST204) when its
-      // schema cache is stale. DB default is standard; trigger 016 sets tab_kind=cx when position_name='CX'.
-      const { data: newFlow, error: fErr } = await supabase
-        .from('flow_tabs')
-        .insert({
-          user_id: userId,
-          round_id: newRound.id,
-          position_name: flow.position_name,
-          initiated_by: flow.initiated_by,
-          display_order: flow.display_order,
-        })
-        .select()
-        .single();
-      if (fErr) {
-        const cacheErr = mapFlowTabsSchemaCacheError(fErr);
-        if (cacheErr) throw cacheErr;
-        throw fErr;
-      }
-
-      const normalizedCells = normalizeImportedFlowCells(flow.cells);
-      if (normalizedCells.length > 0) {
-        const cellRows = normalizedCells.map((c) => ({
-          user_id: userId,
-          flow_id: newFlow.id,
-          column_index: c.column_index,
-          row_index: c.row_index,
-          content: c.content,
-          color: c.color,
-          comment: c.comment ?? '',
-        }));
-        const { error: cErr } = await supabase.from('flow_cells').insert(cellRows);
-        if (cErr) throw cErr;
-      }
-    }
+    await insertFlowsAndCells(userId, newRound.id, round.flows);
   }
 
   return newTournament.id;
