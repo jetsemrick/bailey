@@ -9,6 +9,10 @@ export interface PersistedTimerSlice {
   deadlineMs?: number;
 }
 
+function remainingSecondsFromDeadline(deadlineMs: number): number {
+  return Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000));
+}
+
 function readPersistedSlice(key: string): Omit<PersistedTimerSlice, 'savedAt'> & { savedAt: number; deadlineMs?: number } | null {
   try {
     const raw = sessionStorage.getItem(key);
@@ -28,8 +32,7 @@ function readPersistedSlice(key: string): Omit<PersistedTimerSlice, 'savedAt'> &
     let deadlineMs = p.deadlineMs;
     
     if (p.running && p.deadlineMs && typeof p.deadlineMs === 'number') {
-      const remainingMs = p.deadlineMs - Date.now();
-      secondsLeft = Math.max(0, Math.ceil(remainingMs / 1000));
+      secondsLeft = remainingSecondsFromDeadline(p.deadlineMs);
       running = secondsLeft > 0;
     } else if (p.running && !p.deadlineMs) {
       const elapsedSec = Math.floor((Date.now() - p.savedAt) / 1000);
@@ -110,6 +113,8 @@ export function useSingleTimer(
     return loaded?.deadlineMs ?? null;
   });
   const [expired, setExpired] = useState(false);
+  const deadlineMsRef = useRef<number | null>(deadlineMs);
+  deadlineMsRef.current = deadlineMs;
 
   // Re-hydrate when switching rounds / preset (key change only)
   useEffect(() => {
@@ -150,8 +155,10 @@ export function useSingleTimer(
   // DEB-65: Deadline-based calculation to avoid background tab drift
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(() => {
-      if (deadlineMs === null) {
+
+    const tick = () => {
+      const deadline = deadlineMsRef.current;
+      if (deadline === null) {
         setSecondsLeft((prev) => {
           if (prev <= 1) {
             setRunning(false);
@@ -162,8 +169,7 @@ export function useSingleTimer(
           return prev - 1;
         });
       } else {
-        const remainingMs = deadlineMs - Date.now();
-        const remaining = Math.max(0, Math.ceil(remainingMs / 1000));
+        const remaining = remainingSecondsFromDeadline(deadline);
         setSecondsLeft(remaining);
         if (remaining <= 0) {
           setRunning(false);
@@ -172,11 +178,30 @@ export function useSingleTimer(
           playBeep();
         }
       }
-    }, 1000);
-    return () => clearInterval(id);
-  }, [running, playBeep, deadlineMs]);
+    };
+
+    const id = setInterval(tick, 1000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && deadlineMsRef.current !== null) {
+        tick();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [running, playBeep]);
 
   const stop = useCallback(() => {
+    const deadline = deadlineMsRef.current;
+    if (deadline !== null) {
+      const remaining = remainingSecondsFromDeadline(deadline);
+      setSecondsLeft(remaining);
+      if (remaining <= 0) {
+        setExpired(true);
+      }
+    }
     setRunning(false);
     setDeadlineMs(null);
   }, []);

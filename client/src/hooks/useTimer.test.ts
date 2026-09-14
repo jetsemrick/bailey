@@ -117,6 +117,65 @@ describe('useSingleTimer', () => {
     expect(result.current.secondsLeft).toBe(8);
   });
 
+  test('pause commits remaining time from deadline after a background gap', () => {
+    const { result } = renderHook(() => useSingleTimer(60));
+
+    act(() => {
+      result.current.start();
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(result.current.secondsLeft).toBe(58);
+
+    act(() => {
+      vi.setSystemTime(Date.now() + 30000);
+      result.current.pause();
+    });
+
+    expect(result.current.running).toBe(false);
+    expect(result.current.secondsLeft).toBe(28);
+  });
+
+  test('visibilitychange syncs remaining time from deadline', () => {
+    const { result } = renderHook(() => useSingleTimer(60));
+
+    act(() => {
+      result.current.start();
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(result.current.secondsLeft).toBe(58);
+
+    act(() => {
+      vi.setSystemTime(Date.now() + 30000);
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(result.current.running).toBe(true);
+    expect(result.current.secondsLeft).toBe(28);
+  });
+
+  test('visibilitychange expires when the deadline has passed', () => {
+    const { result } = renderHook(() => useSingleTimer(5));
+
+    act(() => {
+      result.current.start();
+    });
+
+    act(() => {
+      vi.setSystemTime(Date.now() + 10000);
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(result.current.secondsLeft).toBe(0);
+    expect(result.current.running).toBe(false);
+    expect(result.current.expired).toBe(true);
+  });
+
   test('reset restores to total seconds', () => {
     const { result } = renderHook(() => useSingleTimer(10));
 
