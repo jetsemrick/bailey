@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../db/api';
 import type { Round, Flow } from '../db/types';
@@ -35,6 +35,8 @@ export default function Sidebar({ tournamentId, activeRoundId, activeFlowId, act
   const navigate = useNavigate();
   const [nodes, setNodes] = useState<RoundNode[]>([]);
   const [loading, setLoading] = useState(true);
+  const activeRoundIdRef = useRef(activeRoundId);
+  activeRoundIdRef.current = activeRoundId;
 
   const load = useCallback(async () => {
     try {
@@ -50,7 +52,7 @@ export default function Sidebar({ tournamentId, activeRoundId, activeFlowId, act
           roundNodes.push({
             round: r,
             flows: flowEntries,
-            expanded: false,
+            expanded: r.id === activeRoundIdRef.current,
             teamName: tree.tournament.team_name,
           });
         }
