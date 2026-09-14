@@ -264,3 +264,40 @@ describe('authenticated writes', () => {
   });
 });
 
+describe('DEB-66: deleteCellsByCoordinates', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+    getSessionMock.mockReset();
+    getUserMock.mockReset();
+  });
+
+  test('deletes multiple cells by flow_id and coordinates in one request', async () => {
+    const { deleteCellsByCoordinates } = await import('./api');
+
+    const orMock = vi.fn().mockResolvedValue({ error: null });
+    const eqMock = vi.fn(() => ({ or: orMock }));
+    fromMock.mockReturnValue({ delete: () => ({ eq: eqMock }) });
+
+    await deleteCellsByCoordinates('flow-1', [
+      { column_index: 0, row_index: 5 },
+      { column_index: 2, row_index: 3 },
+    ]);
+
+    expect(fromMock).toHaveBeenCalledOnce();
+    expect(fromMock).toHaveBeenCalledWith('flow_cells');
+    expect(eqMock).toHaveBeenCalledOnce();
+    expect(eqMock).toHaveBeenCalledWith('flow_id', 'flow-1');
+    expect(orMock).toHaveBeenCalledOnce();
+    expect(orMock).toHaveBeenCalledWith(
+      'and(column_index.eq.0,row_index.eq.5),and(column_index.eq.2,row_index.eq.3)'
+    );
+  });
+
+  test('does nothing when coordinates array is empty', async () => {
+    const { deleteCellsByCoordinates } = await import('./api');
+    
+    await deleteCellsByCoordinates('flow-1', []);
+    
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+});
