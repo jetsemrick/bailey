@@ -510,16 +510,18 @@ export async function deleteCellsByCoordinates(
   coordinates: { column_index: number; row_index: number }[]
 ): Promise<void> {
   if (coordinates.length === 0) return;
-  
-  for (const coord of coordinates) {
-    const { error } = await supabase
-      .from('flow_cells')
-      .delete()
-      .eq('flow_id', flowId)
-      .eq('column_index', coord.column_index)
-      .eq('row_index', coord.row_index);
-    if (error) throw error;
-  }
+
+  // One PostgREST DELETE: flow_id AND (coord OR coord OR ...). Coordinates are
+  // integers, so they are safe to interpolate into the filter string.
+  const orFilter = coordinates
+    .map((c) => `and(column_index.eq.${c.column_index},row_index.eq.${c.row_index})`)
+    .join(',');
+  const { error } = await supabase
+    .from('flow_cells')
+    .delete()
+    .eq('flow_id', flowId)
+    .or(orFilter);
+  if (error) throw error;
 }
 
 // ── Flow Analytics ───────────────────────────────────────────

@@ -271,26 +271,26 @@ describe('DEB-66: deleteCellsByCoordinates', () => {
     getUserMock.mockReset();
   });
 
-  test('deletes multiple cells by flow_id and coordinates', async () => {
+  test('deletes multiple cells by flow_id and coordinates in one request', async () => {
     const { deleteCellsByCoordinates } = await import('./api');
-    
-    const deleteMock = vi.fn().mockResolvedValue({ error: null });
-    const eqRowMock = vi.fn(() => ({ delete: deleteMock }));
-    const eqColMock = vi.fn(() => ({ eq: eqRowMock }));
-    const eqFlowMock = vi.fn(() => ({ eq: eqColMock }));
-    fromMock.mockReturnValue({ delete: () => ({ eq: eqFlowMock }) });
+
+    const orMock = vi.fn().mockResolvedValue({ error: null });
+    const eqMock = vi.fn(() => ({ or: orMock }));
+    fromMock.mockReturnValue({ delete: () => ({ eq: eqMock }) });
 
     await deleteCellsByCoordinates('flow-1', [
       { column_index: 0, row_index: 5 },
       { column_index: 2, row_index: 3 },
     ]);
 
+    expect(fromMock).toHaveBeenCalledOnce();
     expect(fromMock).toHaveBeenCalledWith('flow_cells');
-    expect(eqFlowMock).toHaveBeenCalledWith('flow_id', 'flow-1');
-    expect(eqColMock).toHaveBeenCalledWith('column_index', 0);
-    expect(eqRowMock).toHaveBeenCalledWith('row_index', 5);
-    expect(eqColMock).toHaveBeenCalledWith('column_index', 2);
-    expect(eqRowMock).toHaveBeenCalledWith('row_index', 3);
+    expect(eqMock).toHaveBeenCalledOnce();
+    expect(eqMock).toHaveBeenCalledWith('flow_id', 'flow-1');
+    expect(orMock).toHaveBeenCalledOnce();
+    expect(orMock).toHaveBeenCalledWith(
+      'and(column_index.eq.0,row_index.eq.5),and(column_index.eq.2,row_index.eq.3)'
+    );
   });
 
   test('does nothing when coordinates array is empty', async () => {

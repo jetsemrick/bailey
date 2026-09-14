@@ -559,7 +559,7 @@ describe('useFlowGrid', () => {
     ]);
   });
 
-  test('DEB-66: empty cells are deleted, not upserted', async () => {
+  test('DEB-66: mixed flush upserts vacated slots with content, then deletes empties', async () => {
     apiMock.listCells.mockResolvedValue([]);
     let grid = renderHook();
     grid = await flushAndRender();
@@ -568,13 +568,17 @@ describe('useFlowGrid', () => {
     grid.updateCell(0, 1, '   ');
     grid.updateCell(1, 0, 'actual content');
     grid = renderHook();
-    
+
     await grid.saveNow();
     grid = await flushAndRender();
-    
+
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
     expect(apiMock.upsertCells).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({ column_index: 0, row_index: 0, content: '' }),
+      expect.objectContaining({ column_index: 0, row_index: 1, content: '   ' }),
       expect.objectContaining({ column_index: 1, row_index: 0, content: 'actual content' }),
     ]);
+    expect(apiMock.deleteCellsByCoordinates).toHaveBeenCalledTimes(1);
     expect(apiMock.deleteCellsByCoordinates).toHaveBeenCalledWith('flow-a', [
       { column_index: 0, row_index: 0 },
       { column_index: 0, row_index: 1 },
@@ -619,6 +623,7 @@ describe('useFlowGrid', () => {
     grid = await flushAndRender();
     
     expect(apiMock.upsertCells).not.toHaveBeenCalled();
+    expect(apiMock.deleteCellsByCoordinates).toHaveBeenCalledTimes(1);
     expect(apiMock.deleteCellsByCoordinates).toHaveBeenCalledWith('flow-a', [
       { column_index: 0, row_index: 0 },
       { column_index: 0, row_index: 1 },
