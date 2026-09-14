@@ -203,6 +203,73 @@ export async function deleteTournament(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export interface TournamentWithRoundsAndFlows {
+  tournament: Tournament;
+  rounds: Array<{
+    round: Round;
+    flows: Flow[];
+  }>;
+}
+
+export async function getTournamentTree(tournamentId: string): Promise<TournamentWithRoundsAndFlows> {
+  const { data: tournament, error: tErr } = await supabase
+    .from('tournaments')
+    .select(`
+      *,
+      rounds (
+        *,
+        flow_tabs (*)
+      )
+    `)
+    .eq('id', tournamentId)
+    .single();
+  
+  if (tErr) throw tErr;
+  
+  const rounds = (tournament.rounds as unknown[] ?? []).map((r: unknown) => {
+    const round = r as Round & { flow_tabs?: unknown[] };
+    const flows = (round.flow_tabs ?? []).map((f) => normalizeFlowTabKind(f as Flow));
+    const { flow_tabs: _, ...roundData } = round;
+    return {
+      round: roundData,
+      flows: flows.sort((a, b) => a.display_order - b.display_order),
+    };
+  }).sort((a, b) => a.round.round_number - b.round.round_number);
+  
+  return { tournament, rounds };
+}
+
+export async function listTournamentsTree(): Promise<TournamentWithRoundsAndFlows[]> {
+  const userId = await uid();
+  const { data, error } = await supabase
+    .from('tournaments')
+    .select(`
+      *,
+      rounds (
+        *,
+        flow_tabs (*)
+      )
+    `)
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
+  
+  if (error) throw error;
+  
+  return (data ?? []).map((tournament) => {
+    const rounds = (tournament.rounds as unknown[] ?? []).map((r: unknown) => {
+      const round = r as Round & { flow_tabs?: unknown[] };
+      const flows = (round.flow_tabs ?? []).map((f) => normalizeFlowTabKind(f as Flow));
+      const { flow_tabs: _, ...roundData } = round;
+      return {
+        round: roundData,
+        flows: flows.sort((a, b) => a.display_order - b.display_order),
+      };
+    }).sort((a, b) => a.round.round_number - b.round.round_number);
+    
+    return { tournament, rounds };
+  });
+}
+
 // ── Rounds ───────────────────────────────────────────────────
 
 export async function listRounds(tournamentId: string): Promise<Round[]> {

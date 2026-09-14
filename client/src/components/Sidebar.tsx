@@ -40,18 +40,18 @@ export default function Sidebar({ tournamentId, activeRoundId, activeFlowId, act
     try {
       setLoading(true);
       const roundNodes: RoundNode[] = [];
-      for (const t of tournamentId
-        ? [await api.getTournament(tournamentId)]
-        : await api.listTournaments()) {
-        const rounds = await api.listRounds(t.id);
-        for (const r of rounds) {
-          const flows = await api.listFlows(r.id);
+      const trees = tournamentId
+        ? [await api.getTournamentTree(tournamentId)]
+        : await api.listTournamentsTree();
+      
+      for (const tree of trees) {
+        for (const { round: r, flows } of tree.rounds) {
           const flowEntries: FlowEntry[] = flows.map((f) => ({ flow: f, round: r }));
           roundNodes.push({
             round: r,
             flows: flowEntries,
-            expanded: r.id === activeRoundId,
-            teamName: t.team_name,
+            expanded: false,
+            teamName: tree.tournament.team_name,
           });
         }
       }
@@ -61,11 +61,21 @@ export default function Sidebar({ tournamentId, activeRoundId, activeFlowId, act
     } finally {
       setLoading(false);
     }
-  }, [tournamentId, activeRoundId]);
+  }, [tournamentId]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (activeRoundId) {
+      setNodes((prev) =>
+        prev.map((n) =>
+          n.round.id === activeRoundId ? { ...n, expanded: true } : n
+        )
+      );
+    }
+  }, [activeRoundId]);
 
   const toggleExpand = (id: string) => {
     setNodes((prev) =>
