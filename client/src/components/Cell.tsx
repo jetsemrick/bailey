@@ -17,6 +17,8 @@ interface CellProps {
   onColorChange?: (color: CellColor) => void;
   /** Whether this cell is selected (has selection ring, arrow keys navigate) */
   selected?: boolean;
+  /** Whether this cell is the primary cell (main selection anchor) */
+  isPrimary?: boolean;
   /** Whether this cell is in editing mode (contenteditable focused, arrow keys move caret) */
   editing?: boolean;
   onFocus?: () => void;
@@ -81,6 +83,7 @@ const Cell = memo(function Cell({
   side,
   onUpdate,
   selected,
+  isPrimary = false,
   editing,
   onFocus,
   onStartEditing,
@@ -218,10 +221,14 @@ const Cell = memo(function Cell({
   const selectedClass =
     variant === 'sharp'
       ? selected
-        ? 'bg-card-01 shadow-[inset_0_0_0_2px_rgb(var(--accent))]'
+        ? isPrimary
+          ? 'bg-card-01 shadow-[inset_0_0_0_2px_rgb(var(--accent))]'
+          : 'bg-card-01 shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.5)]'
         : ''
       : selected
-        ? 'border border-accent/25 bg-card-01 rounded-sm'
+        ? isPrimary
+          ? 'border border-accent/25 bg-card-01 rounded-sm'
+          : 'border border-accent/15 bg-card-01/50 rounded-sm'
         : 'border border-transparent';
   const editingBgClass = editing ? 'bg-card-01' : '';
 
@@ -237,6 +244,8 @@ const Cell = memo(function Cell({
       onKeyDown={handleKeyDown}
       className={`w-full min-h-[28px] p-1 focus:outline-none cursor-text whitespace-pre-wrap break-words ${selectedClass} ${editingBgClass} ${sideTextColor} ${colorClass}`}
       style={{ fontSize: 'var(--cell-font-size, 14px)' }}
+      role="gridcell"
+      aria-selected={selected}
     />
   );
 });
