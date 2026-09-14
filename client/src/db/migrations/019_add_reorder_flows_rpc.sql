@@ -7,6 +7,7 @@ CREATE OR REPLACE FUNCTION public.reorder_flow_tabs(
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   item jsonb;
