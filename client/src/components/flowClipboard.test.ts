@@ -97,6 +97,23 @@ describe('flowClipboard', () => {
         ])
       );
     });
+
+    it('should skip cells that would land past the last speech column', () => {
+      const clipboard = {
+        cells: [
+          { col: 5, row: 0, content: 'A', color: null as CellColor, comment: '' },
+          { col: 6, row: 0, content: 'B', color: null as CellColor, comment: '' },
+        ],
+        topLeft: { col: 5, row: 0 },
+      };
+
+      // Paste at 2AR (col 6): first cell stays on-grid, second would be col 7
+      const updates = pasteCells(clipboard, { col: 6, row: 0 });
+
+      expect(updates).toEqual([
+        { col: 6, row: 0, content: 'A', color: null, comment: '' },
+      ]);
+    });
   });
 
   describe('createClipboardSnapshot', () => {

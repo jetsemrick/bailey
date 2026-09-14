@@ -5,7 +5,7 @@
  * Paste applies the copied block relative to the primary cell (paste anchor).
  */
 
-import type { CellColor } from '../db/types';
+import { SPEECH_COLUMNS, type CellColor } from '../db/types';
 import type { CellCoord, SelectionState } from './flowSelection';
 import { getSelectedCells, parseCellKey } from './flowSelection';
 
@@ -75,9 +75,13 @@ export function pasteCells(
   for (const snapshot of clipboard.cells) {
     const offsetCol = snapshot.col - clipboard.topLeft.col;
     const offsetRow = snapshot.row - clipboard.topLeft.row;
+    const col = pasteAnchor.col + offsetCol;
+    const row = pasteAnchor.row + offsetRow;
+    // Speech columns are a fixed set; skip overflow so it is not persisted off-grid.
+    if (col < 0 || col >= SPEECH_COLUMNS.length) continue;
     updates.push({
-      col: pasteAnchor.col + offsetCol,
-      row: pasteAnchor.row + offsetRow,
+      col,
+      row,
       content: snapshot.content,
       color: snapshot.color,
       comment: snapshot.comment,

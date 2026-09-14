@@ -666,7 +666,10 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
-      
+      const target = e.target as HTMLElement;
+      const isTypingTarget =
+        target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
       // Undo
       if (mod && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -703,18 +706,21 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
         return;
       }
       
-      // Copy (only when not editing)
-      if (mod && e.key === 'c' && !isEditing) {
-        e.preventDefault();
+      // Copy (only when not editing a cell, not typing in another field, and cells are selected)
+      if (mod && e.key === 'c' && !isEditing && !isTypingTarget) {
         const data = copyCells(selectionRef.current, getCellContent, getCellColor, getCellComment);
-        setClipboard(data);
+        if (data) {
+          e.preventDefault();
+          setClipboard(data);
+        }
         return;
       }
       
-      // Paste (only when not editing and we have a primary cell)
-      if (mod && e.key === 'v' && !isEditing && clipboard && selectionRef.current.primaryCell) {
-        e.preventDefault();
+      // Paste (only when not editing a cell, not typing in another field, and we have a primary cell)
+      if (mod && e.key === 'v' && !isEditing && !isTypingTarget && clipboard && selectionRef.current.primaryCell) {
         const updates = pasteCells(clipboard, selectionRef.current.primaryCell);
+        if (updates.length === 0) return;
+        e.preventDefault();
         
         // Capture previous state for undo
         const edits = updates.map(u => ({
@@ -744,9 +750,6 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       const shortcut = shortcutFromKeyboardEvent(e);
       if (shortcut) {
         const actions = macroActionsByShortcut.get(shortcut);
-        const target = e.target as HTMLElement;
-        const isTypingTarget =
-          target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
         if (actions && actions.length > 0 && !isTypingTarget && !isEditing) {
           e.preventDefault();
           runMacro(actions);
@@ -756,7 +759,6 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       
       // Arrow key navigation when cell is selected but not editing
       // Skip if user is focused on an input/textarea element elsewhere on the page
-      const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || (target.isContentEditable && !containerRef.current?.contains(target))) {
         return;
       }
