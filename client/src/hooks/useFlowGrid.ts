@@ -291,21 +291,6 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
         if (emptyCellCoords.length > 0) {
           api.deleteCellsByCoordinatesWithKeepalive(flowId, emptyCellCoords).catch(() => {});
         }
-<<<<<<< HEAD
-=======
-      }
-      
-      // beforeunload cannot await or retry. Send one request: mixed shifts
-      // upsert vacated slots as blanks in the same statement so content cannot
-      // duplicate if a separate delete never lands.
-      if (nonEmptyCells.length > 0) {
-        api.upsertCells(
-          activeFlowId,
-          emptyCellCoords.length > 0 ? toSave : nonEmptyCells
-        ).catch(() => {});
-      } else if (emptyCellCoords.length > 0) {
-        api.deleteCellsByCoordinates(activeFlowId, emptyCellCoords).catch(() => {});
->>>>>>> cbe30d4 (fix: batch cell deletes and atomically blank shifted slots)
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
