@@ -6,9 +6,10 @@ export interface PersistedTimerSlice {
   totalSeconds: number;
   running: boolean;
   savedAt: number;
+  deadlineMs?: number;
 }
 
-function readPersistedSlice(key: string): Omit<PersistedTimerSlice, 'savedAt'> & { savedAt: number } | null {
+function readPersistedSlice(key: string): Omit<PersistedTimerSlice, 'savedAt'> & { savedAt: number; deadlineMs?: number } | null {
   try {
     const raw = sessionStorage.getItem(key);
     if (!raw) return null;
@@ -21,13 +22,30 @@ function readPersistedSlice(key: string): Omit<PersistedTimerSlice, 'savedAt'> &
     ) {
       return null;
     }
-    const elapsedSec = Math.floor((Date.now() - p.savedAt) / 1000);
-    const secondsLeft = p.running ? Math.max(0, p.secondsLeft - elapsedSec) : p.secondsLeft;
+    
+    let secondsLeft = p.secondsLeft;
+    let running = p.running;
+    let deadlineMs = p.deadlineMs;
+    
+    if (p.running && p.deadlineMs && typeof p.deadlineMs === 'number') {
+      const remainingMs = p.deadlineMs - Date.now();
+      secondsLeft = Math.max(0, Math.ceil(remainingMs / 1000));
+      running = secondsLeft > 0;
+    } else if (p.running && !p.deadlineMs) {
+      const elapsedSec = Math.floor((Date.now() - p.savedAt) / 1000);
+      secondsLeft = Math.max(0, p.secondsLeft - elapsedSec);
+      running = secondsLeft > 0;
+      if (running) {
+        deadlineMs = Date.now() + secondsLeft * 1000;
+      }
+    }
+    
     return {
       secondsLeft,
       totalSeconds: p.totalSeconds,
-      running: p.running && secondsLeft > 0,
+      running,
       savedAt: p.savedAt,
+      deadlineMs,
     };
   } catch {
     return null;
@@ -36,7 +54,7 @@ function readPersistedSlice(key: string): Omit<PersistedTimerSlice, 'savedAt'> &
 
 function writePersistedSlice(
   key: string,
-  slice: { secondsLeft: number; totalSeconds: number; running: boolean }
+  slice: { secondsLeft: number; totalSeconds: number; running: boolean; deadlineMs?: number }
 ) {
   try {
     const payload: PersistedTimerSlice = {
@@ -86,6 +104,11 @@ export function useSingleTimer(
     const loaded = readPersistedSlice(persistenceKey);
     return loaded ? loaded.running : false;
   });
+  const [deadlineMs, setDeadlineMs] = useState<number | null>(() => {
+    if (!persistenceKey) return null;
+    const loaded = readPersistedSlice(persistenceKey);
+    return loaded?.deadlineMs ?? null;
+  });
   const [expired, setExpired] = useState(false);
 
   // Re-hydrate when switching rounds / preset (key change only)
@@ -97,11 +120,13 @@ export function useSingleTimer(
       setTotalSeconds(loaded.totalSeconds);
       setExpired(loaded.secondsLeft <= 0 && !loaded.running);
       setRunning(loaded.running && loaded.secondsLeft > 0);
+      setDeadlineMs(loaded.deadlineMs ?? null);
     } else {
       setSecondsLeft(initialSeconds);
       setTotalSeconds(initialSeconds);
       setRunning(false);
       setExpired(false);
+      setDeadlineMs(null);
     }
   }, [persistenceKey, initialSeconds]);
 
@@ -122,29 +147,44 @@ export function useSingleTimer(
   }, []);
 
   // One interval while running (DEB-31: survives remount via persisted running + this effect)
+  // DEB-65: Deadline-based calculation to avoid background tab drift
   useEffect(() => {
     if (!running) return;
     const id = setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
+      if (deadlineMs === null) {
+        setSecondsLeft((prev) => {
+          if (prev <= 1) {
+            setRunning(false);
+            setExpired(true);
+            playBeep();
+            return 0;
+          }
+          return prev - 1;
+        });
+      } else {
+        const remainingMs = deadlineMs - Date.now();
+        const remaining = Math.max(0, Math.ceil(remainingMs / 1000));
+        setSecondsLeft(remaining);
+        if (remaining <= 0) {
           setRunning(false);
           setExpired(true);
+          setDeadlineMs(null);
           playBeep();
-          return 0;
         }
-        return prev - 1;
-      });
+      }
     }, 1000);
     return () => clearInterval(id);
-  }, [running, playBeep]);
+  }, [running, playBeep, deadlineMs]);
 
   const stop = useCallback(() => {
     setRunning(false);
+    setDeadlineMs(null);
   }, []);
 
   const start = useCallback(() => {
     if (secondsLeft <= 0 || running) return;
     setExpired(false);
+    setDeadlineMs(Date.now() + secondsLeft * 1000);
     setRunning(true);
   }, [secondsLeft, running]);
 
@@ -153,14 +193,19 @@ export function useSingleTimer(
   useEffect(() => {
     if (!persistenceKey) return;
     const persist = () => {
-      writePersistedSlice(persistenceKey, { secondsLeft, totalSeconds, running });
+      writePersistedSlice(persistenceKey, { 
+        secondsLeft, 
+        totalSeconds, 
+        running,
+        deadlineMs: deadlineMs ?? undefined,
+      });
     };
     if (persistThrottleRef.current) clearTimeout(persistThrottleRef.current);
     persistThrottleRef.current = setTimeout(persist, running ? 400 : 0);
     return () => {
       if (persistThrottleRef.current) clearTimeout(persistThrottleRef.current);
     };
-  }, [persistenceKey, secondsLeft, totalSeconds, running]);
+  }, [persistenceKey, secondsLeft, totalSeconds, running, deadlineMs]);
 
   const pause = useCallback(() => {
     stop();
@@ -170,6 +215,7 @@ export function useSingleTimer(
     stop();
     setSecondsLeft(totalSeconds);
     setExpired(false);
+    setDeadlineMs(null);
   }, [stop, totalSeconds]);
 
   const setTime = useCallback((seconds: number) => {
@@ -178,6 +224,7 @@ export function useSingleTimer(
     setTotalSeconds(secs);
     setSecondsLeft(secs);
     setExpired(false);
+    setDeadlineMs(null);
   }, [stop]);
 
   return {
