@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, memo } from 'react';
 import type { CellColor } from '../db/types';
 import type { FlowSheetVariant } from './flowSheetVariant';
 
@@ -30,8 +30,16 @@ interface CellProps {
   variant?: FlowSheetVariant;
 }
 
+// Cache for sanitizeHtml to avoid re-sanitizing unchanged content
+const sanitizeCache = new Map<string, string>();
+
 /** Sanitize HTML to only allow b, u, mark tags */
 export function sanitizeHtml(html: string): string {
+  // Check cache first
+  const cached = sanitizeCache.get(html);
+  if (cached !== undefined) {
+    return cached;
+  }
   const div = document.createElement('div');
   div.innerHTML = html;
   const allowedColors = ['yellow', 'green', 'blue', ''];
@@ -53,10 +61,21 @@ export function sanitizeHtml(html: string): string {
     if (tag === 'div' || tag === 'p') return children ? children + '\n' : '';
     return children;
   };
-  return Array.from(div.childNodes).map(walk).join('').replace(/\n+$/, '');
+  const result = Array.from(div.childNodes).map(walk).join('').replace(/\n+$/, '');
+  
+  // Cache the result and prune if cache gets too large
+  sanitizeCache.set(html, result);
+  if (sanitizeCache.size > 1000) {
+    const firstKey = sanitizeCache.keys().next().value;
+    if (firstKey !== undefined) {
+      sanitizeCache.delete(firstKey);
+    }
+  }
+  
+  return result;
 }
 
-export default function Cell({
+const Cell = memo(function Cell({
   content,
   color,
   side,
@@ -220,4 +239,6 @@ export default function Cell({
       style={{ fontSize: 'var(--cell-font-size, 14px)' }}
     />
   );
-}
+});
+
+export default Cell;
