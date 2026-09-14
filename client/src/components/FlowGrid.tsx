@@ -56,13 +56,15 @@ const SortableCell = memo(function SortableCell({
 }: {
   id: string; col: number; row: number; content: string; color: CellColor;
   side: 'aff' | 'neg';
-  onUpdate: (c: string) => void; onColorChange: (c: CellColor) => void;
+  onUpdate: (col: number, row: number, c: string) => void;
+  onColorChange: (col: number, row: number, c: CellColor) => void;
   selected: boolean; editing: boolean;
   pendingInput: string | null; onClearPendingInput: () => void;
-  onFocus: () => void; onStartEditing: () => void; onStopEditing: () => void;
-  onNavigate: (d: 'up' | 'down' | 'left' | 'right') => void;
+  onFocus: (col: number, row: number) => void;
+  onStartEditing: () => void; onStopEditing: () => void;
+  onNavigate: (from: { col: number; row: number }, d: 'up' | 'down' | 'left' | 'right') => void;
   comment: string;
-  onContextMenu?: (e: React.MouseEvent) => void;
+  onContextMenu?: (e: React.MouseEvent, col: number, row: number) => void;
   variant: FlowSheetVariant;
 }) {
   const {
@@ -85,6 +87,19 @@ const SortableCell = memo(function SortableCell({
   };
   const dragListeners = editing ? undefined : listeners;
 
+  // Bind col/row here so FlowColumn can pass stable parent callbacks to every cell.
+  const handleUpdate = useCallback((c: string) => onUpdate(col, row, c), [onUpdate, col, row]);
+  const handleColorChange = useCallback((c: CellColor) => onColorChange(col, row, c), [onColorChange, col, row]);
+  const handleFocus = useCallback(() => onFocus(col, row), [onFocus, col, row]);
+  const handleNavigate = useCallback(
+    (d: 'up' | 'down' | 'left' | 'right') => onNavigate({ col, row }, d),
+    [onNavigate, col, row]
+  );
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => onContextMenu?.(e, col, row),
+    [onContextMenu, col, row]
+  );
+
   return (
     <div
       ref={setNodeRef}
@@ -93,22 +108,22 @@ const SortableCell = memo(function SortableCell({
       {...dragListeners}
       className={`relative ${variant === 'sharp' ? 'border-r border-b border-card-04' : ''} ${editing ? '' : 'cursor-grab active:cursor-grabbing'} hover:z-50 ${isDragging ? 'opacity-0 pointer-events-none' : ''} ${selected ? 'z-40' : ''}`}
       data-cell-id={`${col}:${row}`}
-      onContextMenu={onContextMenu}
+      onContextMenu={handleContextMenu}
     >
       <Cell
         content={content}
         color={color}
         side={side}
-        onUpdate={onUpdate}
-        onColorChange={onColorChange}
+        onUpdate={handleUpdate}
+        onColorChange={handleColorChange}
         selected={selected}
         editing={editing}
         pendingInput={pendingInput}
         onClearPendingInput={onClearPendingInput}
-        onFocus={onFocus}
+        onFocus={handleFocus}
         onStartEditing={onStartEditing}
         onStopEditing={onStopEditing}
-        onNavigate={onNavigate}
+        onNavigate={handleNavigate}
         variant={variant}
       />
       {comment && (
@@ -202,18 +217,18 @@ const FlowColumn = memo(function FlowColumn({
             content={getCellContent(dataCol, rowIdx)}
             color={getCellColor(dataCol, rowIdx)}
             side={side}
-            onUpdate={(c) => onCellUpdate(dataCol, rowIdx, c)}
-            onColorChange={(c) => onColorChange(dataCol, rowIdx, c)}
+            onUpdate={onCellUpdate}
+            onColorChange={onColorChange}
             selected={selectedCell?.col === dataCol && selectedCell?.row === rowIdx}
             editing={selectedCell?.col === dataCol && selectedCell?.row === rowIdx && isEditing}
             pendingInput={selectedCell?.col === dataCol && selectedCell?.row === rowIdx ? pendingInput : null}
             onClearPendingInput={onClearPendingInput}
-            onFocus={() => onFocusCell(dataCol, rowIdx)}
+            onFocus={onFocusCell}
             onStartEditing={onStartEditing}
             onStopEditing={onStopEditing}
-            onNavigate={(d) => onNavigate({ col: dataCol, row: rowIdx }, d)}
+            onNavigate={onNavigate}
             comment={getCellComment(dataCol, rowIdx)}
-            onContextMenu={(e) => onContextMenu(e, dataCol, rowIdx)}
+            onContextMenu={onContextMenu}
             variant={variant}
           />
         ))}
@@ -413,12 +428,22 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     }
   }, [selectedCell]);
 
+  // Keep latest getters in refs so cell-edit handlers stay referentially stable.
+  // Otherwise handleCellUpdate/handleColorChange change whenever the cells Map
+  // is rebuilt, which would defeat React.memo on SortableCell/Cell.
+  const getCellContentRef = useRef(getCellContent);
+  const getCellColorRef = useRef(getCellColor);
+  const getCellCommentRef = useRef(getCellComment);
+  getCellContentRef.current = getCellContent;
+  getCellColorRef.current = getCellColor;
+  getCellCommentRef.current = getCellComment;
+
   // Cell update with undo tracking
   const handleCellUpdate = useCallback(
     (col: number, row: number, newContent: string) => {
-      const prev = getCellContent(col, row);
-      const prevColor = getCellColor(col, row);
-      const prevComment = getCellComment(col, row);
+      const prev = getCellContentRef.current(col, row);
+      const prevColor = getCellColorRef.current(col, row);
+      const prevComment = getCellCommentRef.current(col, row);
       if (newContent === prev) return;
       undoRedo.pushEdit({
         col, row,
@@ -428,24 +453,37 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       });
       updateCell(col, row, newContent);
     },
-    [getCellContent, getCellColor, getCellComment, updateCell, undoRedo]
+    [updateCell, undoRedo.pushEdit]
   );
 
   const handleColorChange = useCallback(
     (col: number, row: number, color: CellColor) => {
-      const prev = getCellColor(col, row);
-      const content = getCellContent(col, row);
-      const prevComment = getCellComment(col, row);
+      const prev = getCellColorRef.current(col, row);
+      const content = getCellContentRef.current(col, row);
+      const prevComment = getCellCommentRef.current(col, row);
       undoRedo.pushEdit({
         col, row,
         previousContent: content, newContent: content,
         previousColor: prev, newColor: color,
         previousComment: prevComment, newComment: prevComment,
       });
-      updateCellColor(col, row, color);
+      updateCell(col, row, content, color);
     },
-    [getCellColor, getCellContent, getCellComment, updateCellColor, undoRedo]
+    [updateCell, undoRedo.pushEdit]
   );
+
+  const handleClearPendingInput = useCallback(() => setPendingInput(null), []);
+  const handleFocusCell = useCallback((col: number, row: number) => {
+    setSelectedCell({ col, row });
+    setIsEditing(false);
+  }, []);
+  const handleStartEditing = useCallback(() => setIsEditing(true), []);
+  const handleStopEditing = useCallback(() => setIsEditing(false), []);
+  const handleCellContextMenu = useCallback((e: React.MouseEvent, col: number, row: number) => {
+    e.preventDefault();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setContextMenu({ col, row, rect });
+  }, []);
 
   const commitComment = useCallback(
     (col: number, row: number, comment: string) => {
@@ -805,19 +843,12 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
               selectedCell={selectedCell}
               isEditing={isEditing}
               pendingInput={pendingInput}
-              onClearPendingInput={() => setPendingInput(null)}
-              onFocusCell={(col, row) => {
-                setSelectedCell({ col, row });
-                setIsEditing(false);
-              }}
-              onStartEditing={() => setIsEditing(true)}
-              onStopEditing={() => setIsEditing(false)}
+              onClearPendingInput={handleClearPendingInput}
+              onFocusCell={handleFocusCell}
+              onStartEditing={handleStartEditing}
+              onStopEditing={handleStopEditing}
               onNavigate={navigate}
-              onContextMenu={(e, col, row) => {
-                e.preventDefault();
-                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                setContextMenu({ col, row, rect });
-              }}
+              onContextMenu={handleCellContextMenu}
             />
           ))}
         </div>
