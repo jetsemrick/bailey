@@ -435,7 +435,11 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   }, [clipboard]);
 
   const applySelection = useCallback((next: SelectionState) => {
-    setCopySourceKeys((prev) => nextCopySourceKeys(prev, { type: 'selection-change' }));
+    const current = selectionRef.current;
+    setCopySourceKeys((prev) =>
+      nextCopySourceKeys(prev, { type: 'selection-change', from: current, to: next })
+    );
+    selectionRef.current = next;
     setSelection(next);
   }, []);
 
@@ -564,7 +568,6 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       const setCursor = (next: { col: number; row: number } | null) => {
         if (next) {
           cursor = next;
-          selectionRef.current = selectSingleCell(next.col, next.row);
           applySelection(selectSingleCell(next.col, next.row));
         }
       };

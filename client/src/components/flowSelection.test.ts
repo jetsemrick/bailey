@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   createEmptySelection,
+  selectionsEqual,
   selectSingleCell,
   toggleCell,
   isSelected,
@@ -45,6 +46,26 @@ describe('flowSelection', () => {
       expect(selection.primaryCell).toEqual({ col: 1, row: 2 });
       expect(selection.selectedCells.size).toBe(1);
       expect(selection.selectedCells.has('1:2')).toBe(true);
+    });
+  });
+
+  describe('selectionsEqual', () => {
+    it('should treat rebuilt single-cell selections as equal', () => {
+      expect(selectionsEqual(selectSingleCell(1, 2), selectSingleCell(1, 2))).toBe(true);
+    });
+
+    it('should treat empty selections as equal', () => {
+      expect(selectionsEqual(createEmptySelection(), createEmptySelection())).toBe(true);
+    });
+
+    it('should detect a different primary cell', () => {
+      expect(selectionsEqual(selectSingleCell(1, 2), selectSingleCell(1, 3))).toBe(false);
+    });
+
+    it('should detect a different selected set with the same primary', () => {
+      const single = selectSingleCell(1, 2);
+      const multi = toggleCell(single, 1, 3);
+      expect(selectionsEqual(single, multi)).toBe(false);
     });
   });
 

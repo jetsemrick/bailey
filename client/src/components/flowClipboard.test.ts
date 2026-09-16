@@ -232,7 +232,37 @@ describe('flowClipboard', () => {
       const current = new Set(['1:2']);
       expect(nextCopySourceKeys(current, { type: 'paste-success' })).toBeNull();
       expect(nextCopySourceKeys(current, { type: 'escape' })).toBeNull();
-      expect(nextCopySourceKeys(current, { type: 'selection-change' })).toBeNull();
+      expect(
+        nextCopySourceKeys(current, {
+          type: 'selection-change',
+          from: selectSingleCell(1, 2),
+          to: selectSingleCell(2, 3),
+        })
+      ).toBeNull();
+    });
+
+    it('should keep the copy-source ring when the primary cell and selected set do not change', () => {
+      const current = new Set(['1:2']);
+      const selection = selectSingleCell(1, 2);
+      expect(
+        nextCopySourceKeys(current, {
+          type: 'selection-change',
+          from: selection,
+          to: selectSingleCell(1, 2),
+        })
+      ).toBe(current);
+    });
+
+    it('should clear when the selected set changes even if the primary cell does not', () => {
+      const current = new Set(['1:2', '1:3']);
+      const from = toggleCell(selectSingleCell(1, 2), 1, 3);
+      expect(
+        nextCopySourceKeys(current, {
+          type: 'selection-change',
+          from,
+          to: selectSingleCell(1, 2),
+        })
+      ).toBeNull();
     });
 
     it('should keep the copy-source ring on blocked paste', () => {

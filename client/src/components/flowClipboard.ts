@@ -10,7 +10,7 @@
 
 import type { CellColor } from '../db/types';
 import type { CellCoord, SelectionState } from './flowSelection';
-import { cellKey, getSelectedCells } from './flowSelection';
+import { cellKey, getSelectedCells, selectionsEqual } from './flowSelection';
 
 export interface CellSnapshot {
   col: number;
@@ -44,7 +44,7 @@ export type CopySourceEvent =
   | { type: 'paste-success' }
   | { type: 'paste-blocked' }
   | { type: 'escape' }
-  | { type: 'selection-change' };
+  | { type: 'selection-change'; from: SelectionState; to: SelectionState };
 
 /** Locked DEB-32 blocked-paste flash: 120ms opacity dip to ~0.85. */
 export const PASTE_BLOCKED_FLASH_MS = 120;
@@ -165,7 +165,11 @@ export function nextCopySourceKeys(
       return current ? new Set(current) : null;
     case 'paste-success':
     case 'escape':
+      return null;
     case 'selection-change':
+      if (selectionsEqual(event.from, event.to)) {
+        return current instanceof Set ? current : current ? new Set(current) : null;
+      }
       return null;
   }
 }
