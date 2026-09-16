@@ -57,6 +57,16 @@ describe('keyboardMacros', () => {
     expect(errors).toContain('"Ctrl+S" is reserved by browser or built-in shortcuts.');
   });
 
+  test('reserves Ctrl+C and Ctrl+V for flow-grid clipboard', () => {
+    const errors = validateKeyboardMacros([
+      { ...DEFAULT_KEYBOARD_MACROS[0], id: 'copy-macro', shortcut: 'Ctrl+C' },
+      { ...DEFAULT_KEYBOARD_MACROS[0], id: 'paste-macro', shortcut: 'Cmd+V' },
+    ]);
+
+    expect(errors).toContain('"Ctrl+C" is reserved by browser or built-in shortcuts.');
+    expect(errors).toContain('"Ctrl+V" is reserved by browser or built-in shortcuts.');
+  });
+
   test('validateKeyboardMacros rejects invalid macro payloads', () => {
     const errors = validateKeyboardMacros([
       {

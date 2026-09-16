@@ -77,3 +77,20 @@
     border-radius: 0;
   }
 }
+
+/* DEB-32: empty/blocked paste — 120ms opacity dip to ~0.85, then restore */
+@keyframes flow-paste-blocked {
+  0% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.flow-paste-blocked {
+  animation: flow-paste-blocked 120ms ease-out;
+}
