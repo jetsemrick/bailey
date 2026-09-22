@@ -252,7 +252,7 @@ const Cell = memo(function Cell({
       contentEditable={editing}
       suppressContentEditableWarning
       {...(!editing && { dangerouslySetInnerHTML: { __html: sanitizedContent } })}
-      onClick={!editing ? onFocus : undefined}
+      onClick={!editing && onFocus ? (e) => onFocus(e) : undefined}
       onDoubleClick={!editing ? onStartEditing : undefined}
       onBlur={() => { commitEdit(); onStopEditing?.(); }}
       onKeyDown={handleKeyDown}

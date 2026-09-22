@@ -549,18 +549,16 @@ export async function deleteCellsByCoordinatesWithKeepalive(
   const orFilter = coordinates
     .map((c) => `and(column_index.eq.${c.column_index},row_index.eq.${c.row_index})`)
     .join(',');
+  const url = `${supabaseUrl}/rest/v1/flow_cells?flow_id=eq.${encodeURIComponent(flowId)}&or=(${orFilter})`;
 
-  const response = await fetch(
-    `${supabaseUrl}/rest/v1/flow_cells?flow_id=eq.${encodeURIComponent(flowId)}&or=(${orFilter})`,
-    {
-      method: 'DELETE',
-      headers: {
-        apikey: supabaseAnonKey,
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      keepalive: true,
-    }
-  );
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      'apikey': supabaseAnonKey,
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+    keepalive: true,
+  });
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Unknown error');

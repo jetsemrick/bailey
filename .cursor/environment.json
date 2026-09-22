@@ -1,0 +1,26 @@
+{
+  "name": "Bailey",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "user": "ubuntu",
+  // Required dashboard secrets (never commit values):
+  //   VITE_SUPABASE_URL      — Supabase project URL
+  //   VITE_SUPABASE_ANON_KEY — Supabase anon/public key
+  // Optional: VITE_SIGNUP_ACCESS_CODE to restrict signups
+  "install": "bun install",
+  "terminals": [
+    {
+      "name": "dev server",
+      "command": "bun run dev",
+      "description": "Vite dev server for Bailey on http://localhost:3000"
+    }
+  ],
+  "ports": [
+    {
+      "name": "web",
+      "port": 3000
+    }
+  ]
+}
