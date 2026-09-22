@@ -39,3 +39,50 @@ jobs:
 
       - name: Run unit tests
         run: bun run test
+
+  e2e:
+    name: client e2e smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: client
+    # Requires repository secrets: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Supabase secrets
+        id: secrets
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -n "$VITE_SUPABASE_URL" ] && [ -n "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::E2E skipped — add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY repository secrets"
+          fi
+
+      - name: Setup Bun
+        if: steps.secrets.outputs.configured == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.1"
+
+      - name: Install dependencies
+        if: steps.secrets.outputs.configured == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        if: steps.secrets.outputs.configured == 'true'
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run e2e smoke tests
+        if: steps.secrets.outputs.configured == 'true'
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: bun run test:e2e e2e/smoke.spec.ts

@@ -524,6 +524,47 @@ export async function deleteCellsByCoordinates(
   if (error) throw error;
 }
 
+/**
+ * Delete cells by coordinates with keepalive for reliable unload flush (DEB-64).
+ */
+export async function deleteCellsByCoordinatesWithKeepalive(
+  flowId: string,
+  coordinates: { column_index: number; row_index: number }[]
+): Promise<void> {
+  if (coordinates.length === 0) return;
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    throw new Error('Not authenticated');
+  }
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing Supabase environment variables');
+  }
+
+  const orFilter = coordinates
+    .map((c) => `and(column_index.eq.${c.column_index},row_index.eq.${c.row_index})`)
+    .join(',');
+  const url = `${supabaseUrl}/rest/v1/flow_cells?flow_id=eq.${encodeURIComponent(flowId)}&or=(${orFilter})`;
+
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      'apikey': supabaseAnonKey,
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+    keepalive: true,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`Failed to delete cells: ${errorText}`);
+  }
+}
+
 // ── Flow Analytics ───────────────────────────────────────────
 
 export async function getFlowAnalytics(flowId: string): Promise<FlowAnalytics | null> {

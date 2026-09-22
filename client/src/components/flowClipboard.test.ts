@@ -5,8 +5,8 @@ import type { CellColor } from '../db/types';
 
 describe('flowClipboard', () => {
   const mockGetContent = (col: number, row: number) => `C${col}R${row}`;
-  const mockGetColor = (col: number, row: number): CellColor => (row % 2 === 0 ? 'yellow' : null);
-  const mockGetComment = (col: number, row: number) => (row === 0 ? 'comment' : '');
+  const mockGetColor = (_col: number, row: number): CellColor => (row % 2 === 0 ? 'yellow' : null);
+  const mockGetComment = (_col: number, row: number) => (row === 0 ? 'comment' : '');
 
   describe('copyCells', () => {
     it('should copy a single cell', () => {

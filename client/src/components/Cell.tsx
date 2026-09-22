@@ -21,7 +21,7 @@ interface CellProps {
   isPrimary?: boolean;
   /** Whether this cell is in editing mode (contenteditable focused, arrow keys move caret) */
   editing?: boolean;
-  onFocus?: () => void;
+  onFocus?: (e: React.MouseEvent) => void;
   onStartEditing?: () => void;
   onStopEditing?: () => void;
   /** Character to insert when entering edit mode (e.g. from type-to-edit) */
@@ -238,7 +238,7 @@ const Cell = memo(function Cell({
       contentEditable={editing}
       suppressContentEditableWarning
       {...(!editing && { dangerouslySetInnerHTML: { __html: sanitizedContent } })}
-      onClick={!editing ? onFocus : undefined}
+      onClick={!editing && onFocus ? (e) => onFocus(e) : undefined}
       onDoubleClick={!editing ? onStartEditing : undefined}
       onBlur={() => { commitEdit(); onStopEditing?.(); }}
       onKeyDown={handleKeyDown}

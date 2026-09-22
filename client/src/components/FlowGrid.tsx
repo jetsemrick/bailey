@@ -33,8 +33,6 @@ import {
   isPrimaryCell,
   getSelectedCells,
   getSelectionCount,
-  clearSelection,
-  filterSelectionByColumn,
   createEmptySelection,
 } from './flowSelection';
 import {
