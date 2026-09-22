@@ -525,7 +525,8 @@ export async function deleteCellsByCoordinates(
 }
 
 /**
- * Delete cells by coordinates with keepalive for reliable unload flush (DEB-64).
+ * Delete cells by coordinates with keepalive for reliable unload flush (DEB-64 / DEB-66).
+ * Uses fetch with keepalive so the browser doesn't kill the request on unload.
  */
 export async function deleteCellsByCoordinatesWithKeepalive(
   flowId: string,
@@ -534,7 +535,7 @@ export async function deleteCellsByCoordinatesWithKeepalive(
   if (coordinates.length === 0) return;
 
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) {
+  if (!session?.access_token || !session.user) {
     throw new Error('Not authenticated');
   }
 

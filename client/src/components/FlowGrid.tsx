@@ -34,10 +34,17 @@ import {
   getSelectedCells,
   getSelectionCount,
   createEmptySelection,
+  cellKey,
 } from './flowSelection';
 import {
   copyCells,
   pasteCells,
+  attemptPaste,
+  shouldHandleFlowClipboardShortcut,
+  nextCopySourceKeys,
+  isCopySourceCell,
+  shouldFlashBlockedPaste,
+  PASTE_BLOCKED_FLASH_MS,
   type ClipboardData,
 } from './flowClipboard';
 import {
@@ -71,14 +78,14 @@ const HEADER_HEIGHT = 36; // approximate column header height
 
 const SortableCell = memo(function SortableCell({
   id, col, row, content, color, side, onUpdate, onColorChange,
-  selected, isPrimary, editing, pendingInput, onClearPendingInput,
+  selected, isPrimary, isCopySource, pasteBlocked, editing, pendingInput, onClearPendingInput,
   onFocus, onStartEditing, onStopEditing, onNavigate,
   comment, onContextMenu, variant,
 }: {
   id: string; col: number; row: number; content: string; color: CellColor;
   side: 'aff' | 'neg';
   onUpdate: (c: string) => void; onColorChange: (c: CellColor) => void;
-  selected: boolean; isPrimary: boolean; editing: boolean;
+  selected: boolean; isPrimary: boolean; isCopySource: boolean; pasteBlocked: boolean; editing: boolean;
   pendingInput: string | null; onClearPendingInput: () => void;
   onFocus: (e: React.MouseEvent) => void; onStartEditing: () => void; onStopEditing: () => void;
   onNavigate: (d: 'up' | 'down' | 'left' | 'right') => void;
@@ -124,6 +131,8 @@ const SortableCell = memo(function SortableCell({
         onColorChange={onColorChange}
         selected={selected}
         isPrimary={isPrimary}
+        isCopySource={isCopySource}
+        pasteBlocked={pasteBlocked}
         editing={editing}
         pendingInput={pendingInput}
         onClearPendingInput={onClearPendingInput}
@@ -161,6 +170,8 @@ const FlowColumn = memo(function FlowColumn({
   onCellUpdate,
   onColorChange,
   selection,
+  copySourceKeys,
+  blockedPasteKey,
   isEditing,
   pendingInput,
   onClearPendingInput,
@@ -182,6 +193,8 @@ const FlowColumn = memo(function FlowColumn({
   onCellUpdate: (col: number, row: number, content: string) => void;
   onColorChange: (col: number, row: number, color: CellColor) => void;
   selection: SelectionState;
+  copySourceKeys: Set<string> | null;
+  blockedPasteKey: string | null;
   isEditing: boolean;
   pendingInput: string | null;
   onClearPendingInput: () => void;
@@ -232,6 +245,8 @@ const FlowColumn = memo(function FlowColumn({
               onColorChange={(c) => onColorChange(dataCol, rowIdx, c)}
               selected={selected}
               isPrimary={primary}
+              isCopySource={isCopySourceCell(copySourceKeys, dataCol, rowIdx)}
+              pasteBlocked={blockedPasteKey === cellKey(dataCol, rowIdx)}
               editing={editing}
               pendingInput={primary ? pendingInput : null}
               onClearPendingInput={onClearPendingInput}
@@ -341,6 +356,8 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   const undoRedo = useUndoRedo();
   const [selection, setSelection] = useState<SelectionState>(createEmptySelection());
   const [clipboard, setClipboard] = useState<ClipboardData | null>(null);
+  const [copySourceKeys, setCopySourceKeys] = useState<Set<string> | null>(null);
+  const [blockedPasteKey, setBlockedPasteKey] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ col: number; row: number; rect: DOMRect } | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [pendingInput, setPendingInput] = useState<string | null>(null);
@@ -350,6 +367,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   const hasScrolledToEndRef = useRef(false);
   const { macros } = useKeyboardMacrosContext();
   const selectionRef = useRef<SelectionState>(selection);
+  const clipboardRef = useRef<ClipboardData | null>(null);
 
   // Track container height to fill viewport with rows
   useEffect(() => {
@@ -384,6 +402,9 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     setSelection(createEmptySelection());
     setIsEditing(false);
     setClipboard(null);
+    clipboardRef.current = null;
+    setCopySourceKeys(null);
+    setBlockedPasteKey(null);
   }, [activeFlowId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sensors = useSensors(
@@ -408,6 +429,25 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   useEffect(() => {
     selectionRef.current = selection;
   }, [selection]);
+
+  useEffect(() => {
+    clipboardRef.current = clipboard;
+  }, [clipboard]);
+
+  const applySelection = useCallback((next: SelectionState) => {
+    const current = selectionRef.current;
+    setCopySourceKeys((prev) =>
+      nextCopySourceKeys(prev, { type: 'selection-change', from: current, to: next })
+    );
+    selectionRef.current = next;
+    setSelection(next);
+  }, []);
+
+  useEffect(() => {
+    if (!blockedPasteKey) return;
+    const timer = window.setTimeout(() => setBlockedPasteKey(null), PASTE_BLOCKED_FLASH_MS);
+    return () => window.clearTimeout(timer);
+  }, [blockedPasteKey]);
 
   // Keep primary cell fully visible and never under sticky column header
   useEffect(() => {
@@ -517,9 +557,9 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
           }
         }
       }
-      setSelection(selectSingleCell(col, row));
+      applySelection(selectSingleCell(col, row));
     },
-    [maxRows, dataCols]
+    [maxRows, dataCols, applySelection]
   );
 
   const runMacro = useCallback(
@@ -528,8 +568,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       const setCursor = (next: { col: number; row: number } | null) => {
         if (next) {
           cursor = next;
-          selectionRef.current = selectSingleCell(next.col, next.row);
-          setSelection(selectSingleCell(next.col, next.row));
+          applySelection(selectSingleCell(next.col, next.row));
         }
       };
 
@@ -649,6 +688,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       updateCellColor,
       dataCols,
       maxRows,
+      applySelection,
     ]
   );
 
@@ -701,21 +741,37 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
         return;
       }
       
-      // Copy (only when not editing)
-      if (mod && e.key === 'c' && !isEditing) {
+      // Grid-scoped copy/paste (DEB-32): never steal from settings, sidebar, auth, etc.
+      const clipboardShortcut = shouldHandleFlowClipboardShortcut(e, {
+        gridRoot: containerRef.current,
+        isEditing,
+        hasSelection: getSelectionCount(selectionRef.current) > 0,
+      });
+
+      if (clipboardShortcut === 'copy') {
         e.preventDefault();
         const data = copyCells(selectionRef.current, getCellContent, getCellColor, getCellComment);
+        clipboardRef.current = data;
         setClipboard(data);
+        setCopySourceKeys(nextCopySourceKeys(null, { type: 'copy', selection: selectionRef.current }));
         return;
       }
-      
-      // Paste (only when not editing and we have a primary cell)
-      if (mod && e.key === 'v' && !isEditing && clipboard && selectionRef.current.primaryCell) {
+
+      if (clipboardShortcut === 'paste') {
         e.preventDefault();
-        const updates = pasteCells(clipboard, selectionRef.current.primaryCell);
-        
-        // Capture previous state for undo
-        const edits = updates.map(u => ({
+        const primary = selectionRef.current.primaryCell;
+        const result = attemptPaste(clipboardRef.current, primary);
+
+        if (result.status === 'blocked') {
+          setCopySourceKeys((prev) => nextCopySourceKeys(prev, { type: 'paste-blocked' }));
+          if (shouldFlashBlockedPaste(result, !!primary) && primary) {
+            setBlockedPasteKey(cellKey(primary.col, primary.row));
+          }
+          return;
+        }
+
+        const updates = result.updates;
+        const edits = updates.map((u) => ({
           col: u.col,
           row: u.row,
           previousContent: getCellContent(u.col, u.row),
@@ -725,9 +781,10 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
           previousComment: getCellComment(u.col, u.row),
           newComment: u.comment,
         }));
-        
+
         undoRedo.pushBatch(edits);
         bulkUpdateCells(updates);
+        setCopySourceKeys(nextCopySourceKeys(null, { type: 'paste-success' }));
         return;
       }
       
@@ -802,7 +859,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
           setIsEditing(true);
         } else if (e.key === 'Escape') {
           e.preventDefault();
-          setSelection(createEmptySelection());
+          applySelection(createEmptySelection());
         } else if (
           e.key.length === 1 &&
           !e.ctrlKey &&
@@ -821,7 +878,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   }, [
     undoRedo, updateCell, setCellComment, getCellContent, getCellColor, getCellComment,
     grid, selection, isEditing, navigate, macroActionsByShortcut, runMacro,
-    clipboard, bulkUpdateCells,
+    bulkUpdateCells, applySelection,
   ]);
 
   // DnD handlers
@@ -916,9 +973,9 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       }
 
       // Keep focus on the moved cell so keyboard editing continues at new position.
-      setSelection(selectSingleCell(toCol, toRow));
+      applySelection(selectSingleCell(toCol, toRow));
     },
-    [getCellContent, getCellColor, getCellComment, maxRows, bulkUpdateCells, updateCell, setCellComment, undoRedo]
+    [getCellContent, getCellColor, getCellComment, maxRows, bulkUpdateCells, updateCell, setCellComment, undoRedo, applySelection]
   );
 
   if (!activeFlowId) {
@@ -959,16 +1016,18 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
               onCellUpdate={handleCellUpdate}
               onColorChange={handleColorChange}
               selection={selection}
+              copySourceKeys={copySourceKeys}
+              blockedPasteKey={blockedPasteKey}
               isEditing={isEditing}
               pendingInput={pendingInput}
               onClearPendingInput={() => setPendingInput(null)}
               onFocusCell={(col, row, e) => {
                 if (e.metaKey || e.ctrlKey) {
                   // Cmd/Ctrl-click: toggle cell in selection
-                  setSelection(toggleCell(selection, col, row));
+                  applySelection(toggleCell(selection, col, row));
                 } else {
                   // Plain click: select single cell
-                  setSelection(selectSingleCell(col, row));
+                  applySelection(selectSingleCell(col, row));
                 }
                 setIsEditing(false);
               }}

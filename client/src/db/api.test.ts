@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const { fromMock, getSessionMock, getUserMock, rpcMock } = vi.hoisted(() => ({
   fromMock: vi.fn(),
@@ -302,6 +302,62 @@ describe('DEB-66: deleteCellsByCoordinates', () => {
     expect(fromMock).not.toHaveBeenCalled();
   });
 });
+
+describe('DEB-66: deleteCellsByCoordinatesWithKeepalive', () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    getSessionMock.mockReset();
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-key');
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.unstubAllEnvs();
+  });
+
+  test('does nothing when coordinates array is empty', async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as typeof fetch;
+    const { deleteCellsByCoordinatesWithKeepalive } = await import('./api');
+
+    await deleteCellsByCoordinatesWithKeepalive('flow-1', []);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getSessionMock).not.toHaveBeenCalled();
+  });
+
+  test('sends a keepalive PostgREST DELETE with the same coord filter', async () => {
+    getSessionMock.mockResolvedValue({
+      data: { session: { access_token: 'token', user: { id: 'user-1' } } },
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => '',
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const { deleteCellsByCoordinatesWithKeepalive } = await import('./api');
+    await deleteCellsByCoordinatesWithKeepalive('flow-1', [
+      { column_index: 0, row_index: 5 },
+      { column_index: 2, row_index: 3 },
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      'https://example.supabase.co/rest/v1/flow_cells?flow_id=eq.flow-1&or=(and(column_index.eq.0,row_index.eq.5),and(column_index.eq.2,row_index.eq.3))'
+    );
+    expect(init.method).toBe('DELETE');
+    expect(init.keepalive).toBe(true);
+    expect(init.headers).toEqual({
+      apikey: 'anon-key',
+      Authorization: 'Bearer token',
+    });
+  });
+});
+
 describe('export/import', () => {
   beforeEach(() => {
     fromMock.mockReset();

@@ -19,6 +19,10 @@ interface CellProps {
   selected?: boolean;
   /** Whether this cell is the primary cell (main selection anchor) */
   isPrimary?: boolean;
+  /** DEB-32: copied range — 1px inner accent ring at ~38% opacity */
+  isCopySource?: boolean;
+  /** DEB-32: empty/blocked paste flash on this cell */
+  pasteBlocked?: boolean;
   /** Whether this cell is in editing mode (contenteditable focused, arrow keys move caret) */
   editing?: boolean;
   onFocus?: (e: React.MouseEvent) => void;
@@ -84,6 +88,8 @@ const Cell = memo(function Cell({
   onUpdate,
   selected,
   isPrimary = false,
+  isCopySource = false,
+  pasteBlocked = false,
   editing,
   onFocus,
   onStartEditing,
@@ -222,14 +228,22 @@ const Cell = memo(function Cell({
     variant === 'sharp'
       ? selected
         ? isPrimary
-          ? 'bg-card-01 shadow-[inset_0_0_0_2px_rgb(var(--accent))]'
-          : 'bg-card-01 shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.5)]'
-        : ''
-      : selected
-        ? isPrimary
-          ? 'border border-accent/25 bg-card-01 rounded-sm'
-          : 'border border-accent/15 bg-card-01/50 rounded-sm'
-        : 'border border-transparent';
+          ? isCopySource
+            ? 'bg-card-01 shadow-[inset_0_0_0_2px_rgb(var(--accent)),inset_0_0_0_3px_rgb(var(--accent)/0.38)]'
+            : 'bg-card-01 shadow-[inset_0_0_0_2px_rgb(var(--accent))]'
+          : isCopySource
+            ? 'bg-card-01 shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.5),inset_0_0_0_2px_rgb(var(--accent)/0.38)]'
+            : 'bg-card-01 shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.5)]'
+        : isCopySource
+          ? 'shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.38)]'
+          : ''
+      : `${
+          selected
+            ? isPrimary
+              ? 'border border-accent/25 bg-card-01 rounded-sm'
+              : 'border border-accent/15 bg-card-01/50 rounded-sm'
+            : 'border border-transparent'
+        }${isCopySource ? ' shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.38)]' : ''}`;
   const editingBgClass = editing ? 'bg-card-01' : '';
 
   return (
@@ -242,10 +256,12 @@ const Cell = memo(function Cell({
       onDoubleClick={!editing ? onStartEditing : undefined}
       onBlur={() => { commitEdit(); onStopEditing?.(); }}
       onKeyDown={handleKeyDown}
-      className={`w-full min-h-[28px] p-1 focus:outline-none cursor-text whitespace-pre-wrap break-words ${selectedClass} ${editingBgClass} ${sideTextColor} ${colorClass}`}
+      className={`w-full min-h-[28px] p-1 focus:outline-none cursor-text whitespace-pre-wrap break-words ${selectedClass} ${editingBgClass} ${sideTextColor} ${colorClass}${pasteBlocked ? ' flow-paste-blocked' : ''}`}
       style={{ fontSize: 'var(--cell-font-size, 14px)' }}
       role="gridcell"
       aria-selected={selected}
+      data-copy-source={isCopySource ? 'true' : undefined}
+      data-paste-blocked={pasteBlocked ? 'true' : undefined}
     />
   );
 });

@@ -32,6 +32,8 @@ export const RESERVED_SHORTCUTS = new Set<string>([
   'Ctrl+B',
   'Ctrl+U',
   'Ctrl+E',
+  'Ctrl+C',
+  'Ctrl+V',
 ]);
 
 export const DEFAULT_KEYBOARD_MACROS: KeyboardMacro[] = [

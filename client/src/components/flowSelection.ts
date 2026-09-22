@@ -38,6 +38,19 @@ export function createEmptySelection(): SelectionState {
   };
 }
 
+export function selectionsEqual(a: SelectionState, b: SelectionState): boolean {
+  if (a.primaryCell === null || b.primaryCell === null) {
+    if (a.primaryCell !== b.primaryCell) return false;
+  } else if (a.primaryCell.col !== b.primaryCell.col || a.primaryCell.row !== b.primaryCell.row) {
+    return false;
+  }
+  if (a.selectedCells.size !== b.selectedCells.size) return false;
+  for (const key of a.selectedCells) {
+    if (!b.selectedCells.has(key)) return false;
+  }
+  return true;
+}
+
 export function selectSingleCell(col: number, row: number): SelectionState {
   return {
     primaryCell: { col, row },
