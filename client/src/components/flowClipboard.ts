@@ -7,7 +7,7 @@
 
 import type { CellColor } from '../db/types';
 import type { CellCoord, SelectionState } from './flowSelection';
-import { getSelectedCells, parseCellKey } from './flowSelection';
+import { getSelectedCells } from './flowSelection';
 
 export interface CellSnapshot {
   col: number;
