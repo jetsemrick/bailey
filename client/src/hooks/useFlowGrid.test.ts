@@ -103,6 +103,45 @@ const apiMock = vi.hoisted(() => ({
   deleteCellsByCoordinatesWithKeepalive: vi.fn(),
 }));
 
+const offlineQueueMock = vi.hoisted(() => {
+  const state = { onlineHandler: null as (() => void) | null };
+
+  function consolidateOperations(ops: Array<{ cellKey: string; timestamp: number }>) {
+    const byKey = new Map<string, (typeof ops)[number]>();
+    for (const op of ops) {
+      const existing = byKey.get(op.cellKey);
+      if (!existing || op.timestamp > existing.timestamp) {
+        byKey.set(op.cellKey, op);
+      }
+    }
+    return Array.from(byKey.values()).sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  function attachOnline(cb: () => void) {
+    state.onlineHandler = cb;
+    return () => {
+      if (state.onlineHandler === cb) state.onlineHandler = null;
+    };
+  }
+
+  return {
+    isOnline: vi.fn(() => true),
+    onOnline: vi.fn(attachOnline),
+    onOffline: vi.fn(() => () => {}),
+    getPendingOperationCount: vi.fn(async () => 0),
+    getAllOperations: vi.fn(async (): Promise<unknown[]> => []),
+    consolidateOperations: vi.fn(consolidateOperations),
+    queueOperation: vi.fn(async () => {}),
+    clearOperation: vi.fn(async () => {}),
+    clearOperationsForCells: vi.fn(async () => {}),
+    attachOnline,
+    consolidateOps: consolidateOperations,
+    fireOnline() {
+      state.onlineHandler?.();
+    },
+  };
+});
+
 vi.mock('react', () => hookHarness.react);
 vi.mock('../db/api', () => ({
   ...apiMock,
@@ -113,6 +152,7 @@ vi.mock('../lib/roundFlowTabStorage', () => ({
   readStoredActiveFlowId: vi.fn(() => null),
   writeStoredActiveFlowId: vi.fn(),
 }));
+vi.mock('../lib/offlineQueue', () => offlineQueueMock);
 
 import { useFlowGrid } from './useFlowGrid';
 
@@ -155,6 +195,37 @@ function makeCell(flowId: string, content: string): FlowCell {
   };
 }
 
+function makeQueuedOp(opts: {
+  id: number;
+  type: 'upsert' | 'delete';
+  flowId?: string;
+  column_index?: number;
+  row_index?: number;
+  content?: string;
+  timestamp?: number;
+}) {
+  const flowId = opts.flowId ?? 'flow-a';
+  const column_index = opts.column_index ?? 0;
+  const row_index = opts.row_index ?? 0;
+  const timestamp = opts.timestamp ?? 100;
+  const cellKey = `${flowId}:${column_index}:${row_index}`;
+  if (opts.type === 'delete') {
+    return { id: opts.id, type: 'delete' as const, flowId, column_index, row_index, timestamp, cellKey };
+  }
+  return {
+    id: opts.id,
+    type: 'upsert' as const,
+    flowId,
+    column_index,
+    row_index,
+    content: opts.content ?? '',
+    color: null,
+    comment: '',
+    timestamp,
+    cellKey,
+  };
+}
+
 function renderHook() {
   let result: ReturnType<typeof useFlowGrid>;
   do {
@@ -177,11 +248,16 @@ async function drainMicrotasks(ticks = 8) {
 }
 
 describe('useFlowGrid', () => {
+  const windowListeners = new Map<string, () => void>();
+
   beforeEach(() => {
     hookHarness.reset();
     vi.clearAllMocks();
+    windowListeners.clear();
     vi.stubGlobal('window', {
-      addEventListener: vi.fn(),
+      addEventListener: vi.fn((event: string, handler: () => void) => {
+        windowListeners.set(event, handler);
+      }),
       removeEventListener: vi.fn(),
     });
     apiMock.listFlows.mockResolvedValue([makeFlow('flow-a'), makeFlow('flow-b')]);
@@ -189,6 +265,14 @@ describe('useFlowGrid', () => {
     apiMock.upsertCellsWithKeepalive.mockResolvedValue(undefined);
     apiMock.deleteCellsByCoordinates.mockResolvedValue(undefined);
     apiMock.deleteCellsByCoordinatesWithKeepalive.mockResolvedValue(undefined);
+    offlineQueueMock.isOnline.mockReturnValue(true);
+    offlineQueueMock.getPendingOperationCount.mockResolvedValue(0);
+    offlineQueueMock.getAllOperations.mockResolvedValue([]);
+    offlineQueueMock.queueOperation.mockResolvedValue(undefined);
+    offlineQueueMock.clearOperation.mockResolvedValue(undefined);
+    offlineQueueMock.clearOperationsForCells.mockResolvedValue(undefined);
+    offlineQueueMock.consolidateOperations.mockImplementation(offlineQueueMock.consolidateOps);
+    offlineQueueMock.onOnline.mockImplementation(offlineQueueMock.attachOnline);
   });
 
   test('ignores stale cells when tab loads resolve out of order', async () => {
@@ -336,9 +420,8 @@ describe('useFlowGrid', () => {
 
     grid.selectFlow('flow-b');
     grid = renderHook();
-    // Allow the tab-switch flush promise to settle
-    await Promise.resolve();
-    await Promise.resolve();
+    // Allow the tab-switch flush promise to settle behind mount sync
+    await drainMicrotasks(20);
     grid = await flushAndRender();
     expect(grid.error).toBe('tab switch save failed');
     expect(apiMock.upsertCells).toHaveBeenCalledWith('flow-a', [
@@ -631,5 +714,171 @@ describe('useFlowGrid', () => {
       { column_index: 0, row_index: 3 },
       { column_index: 0, row_index: 4 },
     ]);
+  });
+
+  test('DEB-75: sync clears superseded queue rows for a cell, not only the winner', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    offlineQueueMock.getAllOperations.mockResolvedValue([
+      makeQueuedOp({ id: 1, type: 'upsert', content: 'v1', timestamp: 100 }),
+      makeQueuedOp({ id: 2, type: 'upsert', content: 'v2', timestamp: 200 }),
+    ]);
+
+    renderHook();
+    await flushAndRender();
+    await drainMicrotasks(20);
+    await flushAndRender();
+
+    expect(apiMock.upsertCells).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({ content: 'v2' }),
+    ]);
+    expect(offlineQueueMock.clearOperationsForCells).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({ column_index: 0, row_index: 0 }),
+    ]);
+  });
+
+  test('DEB-75: clears already-synced flow ops when a later flow fails', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    offlineQueueMock.getAllOperations.mockResolvedValue([
+      makeQueuedOp({ id: 1, type: 'upsert', flowId: 'flow-a', content: 'a', timestamp: 100 }),
+      makeQueuedOp({ id: 2, type: 'upsert', flowId: 'flow-b', content: 'b', timestamp: 200 }),
+    ]);
+    apiMock.upsertCells
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('flow-b failed'));
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+    await drainMicrotasks(20);
+    grid = await flushAndRender();
+
+    expect(offlineQueueMock.clearOperationsForCells).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({ column_index: 0, row_index: 0 }),
+    ]);
+    expect(offlineQueueMock.clearOperationsForCells).not.toHaveBeenCalledWith(
+      'flow-b',
+      expect.anything()
+    );
+    expect(grid.error).toBe('flow-b failed');
+  });
+
+  test('DEB-75: reconnect sync waits for an in-flight live flush', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    const liveUpsert = deferred<void>();
+    apiMock.upsertCells.mockReturnValueOnce(liveUpsert.promise);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+    await drainMicrotasks(20);
+
+    grid.updateCell(0, 0, 'live-edit');
+    grid = renderHook();
+    const savePromise = grid.saveNow();
+    await drainMicrotasks(8);
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+
+    offlineQueueMock.getAllOperations.mockResolvedValue([
+      makeQueuedOp({ id: 9, type: 'upsert', content: 'queued-other', row_index: 1, timestamp: 50 }),
+    ]);
+    offlineQueueMock.fireOnline();
+    await drainMicrotasks(20);
+
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(1);
+
+    liveUpsert.resolve();
+    await savePromise;
+    await drainMicrotasks(20);
+    grid = await flushAndRender();
+
+    expect(apiMock.upsertCells).toHaveBeenCalledTimes(2);
+    expect(apiMock.upsertCells.mock.calls[0][1]).toEqual([
+      expect.objectContaining({ content: 'live-edit' }),
+    ]);
+    expect(apiMock.upsertCells.mock.calls[1][1]).toEqual([
+      expect.objectContaining({ content: 'queued-other', row_index: 1 }),
+    ]);
+  });
+
+  test('DEB-75: successful online flush evicts queued snapshots for those cells', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    let grid = renderHook();
+    grid = await flushAndRender();
+    await drainMicrotasks(20);
+
+    grid.updateCell(0, 0, 'fresh');
+    grid = renderHook();
+    await grid.saveNow();
+    grid = await flushAndRender();
+
+    expect(offlineQueueMock.clearOperationsForCells).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({ column_index: 0, row_index: 0 }),
+    ]);
+  });
+
+  test('DEB-75: offline sync blanks vacated cells in the same upsert as moved content', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    offlineQueueMock.getAllOperations.mockResolvedValue([
+      makeQueuedOp({ id: 1, type: 'upsert', content: 'moved', row_index: 1, timestamp: 100 }),
+      makeQueuedOp({ id: 2, type: 'delete', row_index: 0, timestamp: 110 }),
+    ]);
+
+    renderHook();
+    await flushAndRender();
+    await drainMicrotasks(20);
+
+    expect(apiMock.upsertCells).toHaveBeenCalledWith('flow-a', [
+      expect.objectContaining({ row_index: 1, content: 'moved' }),
+      expect.objectContaining({ row_index: 0, content: '' }),
+    ]);
+    expect(apiMock.deleteCellsByCoordinates).toHaveBeenCalledWith('flow-a', [
+      { column_index: 0, row_index: 0 },
+    ]);
+  });
+
+  test('DEB-75: reloads the active flow after a successful queue sync', async () => {
+    const firstLoad = deferred<FlowCell[]>();
+    const queuedOps = deferred<ReturnType<typeof makeQueuedOp>[]>();
+    offlineQueueMock.getAllOperations.mockReturnValue(queuedOps.promise);
+    apiMock.listCells.mockImplementation(() => {
+      if (apiMock.listCells.mock.calls.length === 1) return firstLoad.promise;
+      return Promise.resolve([makeCell('flow-a', 'offline-new')]);
+    });
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+    await drainMicrotasks(20);
+    expect(apiMock.listCells).toHaveBeenCalledWith('flow-a');
+
+    queuedOps.resolve([makeQueuedOp({ id: 1, type: 'upsert', content: 'offline-new' })]);
+    await drainMicrotasks(20);
+
+    firstLoad.resolve([makeCell('flow-a', 'server-old')]);
+    grid = await flushAndRender();
+    await drainMicrotasks(20);
+    grid = await flushAndRender();
+
+    expect(grid.getCellContent(0, 0)).toBe('offline-new');
+    expect(apiMock.listCells.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('DEB-75: beforeunload queues dirty cells when offline', async () => {
+    apiMock.listCells.mockResolvedValue([]);
+    offlineQueueMock.isOnline.mockReturnValue(false);
+
+    let grid = renderHook();
+    grid = await flushAndRender();
+
+    grid.updateCell(0, 0, 'unflushed keystroke');
+    grid = renderHook();
+
+    windowListeners.get('beforeunload')?.();
+
+    expect(offlineQueueMock.queueOperation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'upsert',
+        flowId: 'flow-a',
+        content: 'unflushed keystroke',
+      })
+    );
+    expect(apiMock.upsertCellsWithKeepalive).not.toHaveBeenCalled();
   });
 });

@@ -8,7 +8,7 @@
 
 import type { CellColor } from '../db/types';
 
-export type OfflineOperation = 
+export type OfflineOperation =
   | {
       type: 'upsert';
       flowId: string;
@@ -26,6 +26,10 @@ export type OfflineOperation =
       row_index: number;
       timestamp: number;
     };
+
+type QueueableOperation =
+  | Omit<Extract<OfflineOperation, { type: 'upsert' }>, 'timestamp'>
+  | Omit<Extract<OfflineOperation, { type: 'delete' }>, 'timestamp'>;
 
 export type QueueStatus = 'idle' | 'syncing' | 'error';
 
@@ -64,7 +68,7 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-export async function queueOperation(operation: Omit<OfflineOperation, 'timestamp'>): Promise<void> {
+export async function queueOperation(operation: QueueableOperation): Promise<void> {
   const db = await openDB();
   const tx = db.transaction(STORE_NAME, 'readwrite');
   const store = tx.objectStore(STORE_NAME);
@@ -117,6 +121,24 @@ export async function clearOperation(id: number): Promise<void> {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
+}
+
+/**
+ * Remove every queued operation for the given cells, including superseded
+ * earlier writes for the same key.
+ */
+export async function clearOperationsForCells(
+  flowId: string,
+  coords: { column_index: number; row_index: number }[]
+): Promise<void> {
+  if (coords.length === 0) return;
+  const keys = new Set(coords.map((c) => cellKey(flowId, c.column_index, c.row_index)));
+  const ops = await getAllOperations();
+  for (const op of ops) {
+    if (keys.has(op.cellKey)) {
+      await clearOperation(op.id);
+    }
+  }
 }
 
 export async function clearAllOperations(): Promise<void> {

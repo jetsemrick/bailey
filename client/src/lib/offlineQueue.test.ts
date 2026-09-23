@@ -4,6 +4,7 @@ import {
   queueOperation,
   getAllOperations,
   clearOperation,
+  clearOperationsForCells,
   clearAllOperations,
   getPendingOperationCount,
   consolidateOperations,
@@ -338,5 +339,59 @@ describe('offlineQueue', () => {
   test('handles empty operation list', () => {
     const consolidated = consolidateOperations([]);
     expect(consolidated).toHaveLength(0);
+  });
+
+  test('clears all queued operations for a cell including superseded writes', async () => {
+    await queueOperation({
+      type: 'upsert',
+      flowId: 'flow-1',
+      column_index: 0,
+      row_index: 0,
+      content: 'v1',
+      color: null,
+      comment: '',
+    });
+    await queueOperation({
+      type: 'upsert',
+      flowId: 'flow-1',
+      column_index: 0,
+      row_index: 0,
+      content: 'v2',
+      color: null,
+      comment: '',
+    });
+    await queueOperation({
+      type: 'upsert',
+      flowId: 'flow-1',
+      column_index: 0,
+      row_index: 1,
+      content: 'keep',
+      color: null,
+      comment: '',
+    });
+
+    await clearOperationsForCells('flow-1', [{ column_index: 0, row_index: 0 }]);
+
+    const ops = await getAllOperations();
+    expect(ops).toHaveLength(1);
+    expect(ops[0]).toEqual(expect.objectContaining({ content: 'keep' }));
+  });
+
+  test('clearOperationsForCells with empty coords is a no-op', async () => {
+    await queueOperation({
+      type: 'upsert',
+      flowId: 'flow-1',
+      column_index: 0,
+      row_index: 0,
+      content: 'keep',
+      color: null,
+      comment: '',
+    });
+
+    await clearOperationsForCells('flow-1', []);
+
+    const ops = await getAllOperations();
+    expect(ops).toHaveLength(1);
+    expect(ops[0]).toEqual(expect.objectContaining({ content: 'keep' }));
   });
 });
