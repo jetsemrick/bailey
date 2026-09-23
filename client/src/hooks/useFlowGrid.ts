@@ -6,10 +6,11 @@ import {
   readStoredActiveFlowId,
   writeStoredActiveFlowId,
 } from '../lib/roundFlowTabStorage';
+import * as offlineQueue from '../lib/offlineQueue';
 
 const DEBOUNCE_MS = 500;
 
-export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error' | 'pending';
 
 export function useFlowGrid(roundId: string | undefined, _round?: Round | null) {
   const [flows, setFlows] = useState<Flow[]>([]);
@@ -19,10 +20,14 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
   const [savedFlowRevisions, setSavedFlowRevisions] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  /** Save status for the active flow (DEB-64). */
+  /** Save status for the active flow (DEB-64, DEB-75). */
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const saveStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cellsLoadRequestRef = useRef(0);
+  /** DEB-75: Track online/offline status. */
+  const [isOnline, setIsOnline] = useState(offlineQueue.isOnline());
+  const [pendingCount, setPendingCount] = useState(0);
+  const syncInProgressRef = useRef(false);
 
   const markFlowSaved = useCallback((flowId: string) => {
     setSavedFlowRevisions((prev) => {
@@ -31,6 +36,131 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
       return next;
     });
   }, []);
+
+  // DEB-75: Update pending count from IndexedDB queue
+  const updatePendingCount = useCallback(async () => {
+    try {
+      const count = await offlineQueue.getPendingOperationCount();
+      setPendingCount(count);
+      if (count > 0 && activeFlowIdRef.current) {
+        setSaveStatus('pending');
+      }
+    } catch {
+      // Ignore errors reading pending count
+    }
+  }, []);
+
+  // DEB-75: Sync pending operations from IndexedDB to Supabase
+  const syncPendingOperations = useCallback(async () => {
+    if (syncInProgressRef.current || !offlineQueue.isOnline()) return;
+
+    syncInProgressRef.current = true;
+    setSaveStatus('saving');
+
+    try {
+      const allOps = await offlineQueue.getAllOperations();
+      const consolidated = offlineQueue.consolidateOperations(allOps);
+
+      if (consolidated.length === 0) {
+        setSaveStatus('idle');
+        syncInProgressRef.current = false;
+        return;
+      }
+
+      const opsToDelete: number[] = [];
+
+      const opsByFlow = new Map<string, { upserts: typeof consolidated; deletes: typeof consolidated }>();
+      for (const op of consolidated) {
+        if (!opsByFlow.has(op.flowId)) {
+          opsByFlow.set(op.flowId, { upserts: [], deletes: [] });
+        }
+        const flowOps = opsByFlow.get(op.flowId)!;
+        if (op.type === 'upsert') {
+          flowOps.upserts.push(op);
+        } else {
+          flowOps.deletes.push(op);
+        }
+      }
+
+      for (const [flowId, { upserts, deletes }] of opsByFlow) {
+        try {
+          if (upserts.length > 0) {
+            await api.upsertCells(
+              flowId,
+              upserts.map((op) => ({
+                column_index: op.column_index,
+                row_index: op.row_index,
+                content: op.content,
+                color: op.color,
+                comment: op.comment,
+              }))
+            );
+            opsToDelete.push(...upserts.map((op) => op.id));
+          }
+
+          if (deletes.length > 0) {
+            await api.deleteCellsByCoordinates(
+              flowId,
+              deletes.map((op) => ({
+                column_index: op.column_index,
+                row_index: op.row_index,
+              }))
+            );
+            opsToDelete.push(...deletes.map((op) => op.id));
+          }
+
+          markFlowSaved(flowId);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to sync offline changes');
+          setSaveStatus('error');
+          syncInProgressRef.current = false;
+          return;
+        }
+      }
+
+      for (const id of opsToDelete) {
+        await offlineQueue.clearOperation(id);
+      }
+
+      await updatePendingCount();
+      setError(null);
+      setSaveStatus('saved');
+      if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
+      saveStatusTimerRef.current = setTimeout(() => {
+        setSaveStatus('idle');
+      }, 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sync offline changes');
+      setSaveStatus('error');
+    } finally {
+      syncInProgressRef.current = false;
+    }
+  }, [markFlowSaved, updatePendingCount]);
+
+  // DEB-75: Monitor online/offline status
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      void syncPendingOperations();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    const unsubOnline = offlineQueue.onOnline(handleOnline);
+    const unsubOffline = offlineQueue.onOffline(handleOffline);
+
+    updatePendingCount().then(() => {
+      if (offlineQueue.isOnline()) {
+        void syncPendingOperations();
+      }
+    });
+
+    return () => {
+      unsubOnline();
+      unsubOffline();
+    };
+  }, [syncPendingOperations, updatePendingCount]);
 
   // Remember active flow tab per round (browser tab reload / restore)
   useEffect(() => {
@@ -154,11 +284,12 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     }
   }, [activeFlowId, loadCells]);
 
-  // -- Flush dirty cells to Supabase --
+  // -- Flush dirty cells to Supabase or offline queue (DEB-75) --
   // DEB-59: cells are claimed synchronously and each write is queued behind the
   // last, so the returned promise settles only once every earlier write has
   // landed. Readers that await a flush (DecisionView, Ctrl+S) never race a save.
   // DEB-66: delete empty cells instead of upserting blanks.
+  // DEB-75: queue operations when offline instead of failing immediately.
   const flushFlowCells = useCallback((flowId: string): Promise<void> => {
     const dirty = dirtyByFlowRef.current.get(flowId);
     if (!dirty || dirty.size === 0) return flushQueueRef.current;
@@ -166,9 +297,9 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     const toSave = Array.from(dirty.values());
     dirty.clear();
 
-    // DEB-64: Update save status to 'saving' when starting flush
+    // DEB-64, DEB-75: Update save status to 'saving' when starting flush
     if (flowId === activeFlowIdRef.current) {
-      setSaveStatus('saving');
+      setSaveStatus(offlineQueue.isOnline() ? 'saving' : 'pending');
     }
 
     const queued = flushQueueRef.current.then(async () => {
@@ -192,6 +323,36 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
           }
         }
 
+        // DEB-75: Queue operations when offline
+        if (!offlineQueue.isOnline()) {
+          for (const cell of nonEmptyCells) {
+            await offlineQueue.queueOperation({
+              type: 'upsert',
+              flowId,
+              column_index: cell.column_index,
+              row_index: cell.row_index,
+              content: cell.content,
+              color: cell.color,
+              comment: cell.comment,
+            });
+          }
+          for (const coord of emptyCellCoords) {
+            await offlineQueue.queueOperation({
+              type: 'delete',
+              flowId,
+              column_index: coord.column_index,
+              row_index: coord.row_index,
+            });
+          }
+          await updatePendingCount();
+          setError(null);
+          if (flowId === activeFlowIdRef.current) {
+            setSaveStatus('pending');
+          }
+          return;
+        }
+
+        // Online: persist to Supabase
         if (nonEmptyCells.length > 0) {
           // Mixed batches (insert-row / same-column drag) must blank vacated
           // slots in the same upsert as the new content. A later delete is
@@ -235,7 +396,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
 
     flushQueueRef.current = queued;
     return queued;
-  }, [restoreDirtyCells, armFlowTimer, markFlowSaved]);
+  }, [restoreDirtyCells, armFlowTimer, markFlowSaved, updatePendingCount]);
 
   const flush = useCallback(async () => {
     const flowId = activeFlowIdRef.current;
@@ -572,6 +733,8 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     loading,
     error,
     saveStatus,
+    isOnline,
+    pendingCount,
     getCell,
     getCellContent,
     getCellColor,
