@@ -371,10 +371,10 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   const isEditingRef = useRef(isEditing);
   const gridRef = useRef(grid);
   const undoRedoRef = useRef(undoRedo);
-  const navigateRef = useRef(navigate);
+  const navigateRef = useRef<((from: { col: number; row: number }, direction: 'up' | 'down' | 'left' | 'right') => void) | null>(null);
   const macroActionsByShortcutRef = useRef<Map<string, MacroAction[]>>(new Map());
-  const runMacroRef = useRef(runMacro);
-  const applySelectionRef = useRef(applySelection);
+  const runMacroRef = useRef<((actions: any[]) => void) | null>(null);
+  const applySelectionRef = useRef<((next: any) => void) | null>(null);
   const bulkUpdateCellsRef = useRef(bulkUpdateCells);
 
   // Track container height to fill viewport with rows
@@ -454,17 +454,6 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     undoRedoRef.current = undoRedo;
   }, [undoRedo]);
 
-  useEffect(() => {
-    navigateRef.current = navigate;
-  }, [navigate]);
-
-  useEffect(() => {
-    runMacroRef.current = runMacro;
-  }, [runMacro]);
-
-  useEffect(() => {
-    applySelectionRef.current = applySelection;
-  }, [applySelection]);
 
   useEffect(() => {
     bulkUpdateCellsRef.current = bulkUpdateCells;
@@ -478,6 +467,10 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     selectionRef.current = next;
     setSelection(next);
   }, []);
+
+  useEffect(() => {
+    applySelectionRef.current = applySelection;
+  }, [applySelection]);
 
   useEffect(() => {
     if (!blockedPasteKey) return;
@@ -598,6 +591,10 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     [maxRows, dataCols, applySelection]
   );
 
+  useEffect(() => {
+    navigateRef.current = navigate;
+  }, [navigate]);
+
   const runMacro = useCallback(
     (actions: MacroAction[]) => {
       let cursor = selectionRef.current.primaryCell;
@@ -671,7 +668,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
         const current = getCellColor(cursor.col, cursor.row);
         const index = cycle.indexOf(current);
         const next = cycle[(index + 1) % cycle.length];
-        updateCellColor(cursor.col, cursor.row, next);
+        handleColorChange(cursor.col, cursor.row, next);
       };
 
       const moveDownRows = (count: number) => {
@@ -725,8 +722,13 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       dataCols,
       maxRows,
       applySelection,
-    ]
+      handleColorChange,
+      ]
   );
+
+  useEffect(() => {
+    runMacroRef.current = runMacro;
+  }, [runMacro]);
 
   useEffect(() => {
     const map = new Map<string, MacroAction[]>();
@@ -750,7 +752,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       const currentBulkUpdateCells = bulkUpdateCellsRef.current;
       
       // Undo
-      if (mod && e.key === 'z' && !e.shiftKey) {
+      if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault();
         const entry = currentUndoRedo.undo();
         if (entry) {
@@ -768,7 +770,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       }
       
       // Redo
-      if (mod && e.key === 'z' && e.shiftKey) {
+      if (mod && e.key.toLowerCase() === 'z' && e.shiftKey) {
         e.preventDefault();
         const entry = currentUndoRedo.redo();
         if (entry) {
