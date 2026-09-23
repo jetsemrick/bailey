@@ -153,6 +153,21 @@ export interface KeyboardMacrosRow {
   updated_at: string;
 }
 
+export interface FlowTabTemplateTab {
+  position_name: string;
+  initiated_by: 'aff' | 'neg';
+  tab_kind?: FlowTabKind;
+}
+
+export interface FlowTabTemplate {
+  id: string;
+  user_id: string;
+  name: string;
+  tabs: FlowTabTemplateTab[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface FlowCell {
   id: string;
   user_id: string;
@@ -183,3 +198,39 @@ export const COLUMN_META: Record<SpeechColumn, { side: 'aff' | 'neg'; minutes: n
   '2NR': { side: 'neg', minutes: 5 },
   '2AR': { side: 'aff', minutes: 5 },
 };
+
+/** Built-in flow tab templates */
+export const BUILT_IN_TEMPLATES: Omit<FlowTabTemplate, 'id' | 'user_id' | 'created_at' | 'updated_at'>[] = [
+  {
+    name: 'Standard NEG (T/DA/CP/K)',
+    tabs: [
+      { position_name: 'T', initiated_by: 'neg' },
+      { position_name: 'DA', initiated_by: 'neg' },
+      { position_name: 'CP', initiated_by: 'neg' },
+      { position_name: 'K', initiated_by: 'neg' },
+      { position_name: 'Case', initiated_by: 'aff' },
+    ],
+  },
+  {
+    name: 'Standard AFF (Case)',
+    tabs: [
+      { position_name: 'Case', initiated_by: 'aff' },
+    ],
+  },
+  {
+    name: 'Full Round (CX + Case)',
+    tabs: [
+      { position_name: 'CX', initiated_by: 'aff', tab_kind: 'cx' },
+      { position_name: 'Case', initiated_by: 'aff' },
+    ],
+  },
+  {
+    name: 'Multiple DAs',
+    tabs: [
+      { position_name: 'DA 1', initiated_by: 'neg' },
+      { position_name: 'DA 2', initiated_by: 'neg' },
+      { position_name: 'DA 3', initiated_by: 'neg' },
+      { position_name: 'Case', initiated_by: 'aff' },
+    ],
+  },
+];
