@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import 'fake-indexeddb/auto';
 import {
   queueOperation,
@@ -11,6 +11,15 @@ import {
   deleteDB,
   type OfflineOperation,
 } from './offlineQueue';
+
+function expectUpsert(
+  op: OfflineOperation,
+  expected: Partial<Extract<OfflineOperation, { type: 'upsert' }>>,
+) {
+  expect(op.type).toBe('upsert');
+  if (op.type !== 'upsert') return;
+  expect(op).toMatchObject(expected);
+}
 
 describe('offlineQueue', () => {
   beforeEach(async () => {
@@ -36,7 +45,7 @@ describe('offlineQueue', () => {
     expect(ops).toHaveLength(1);
     expect(ops[0].type).toBe('upsert');
     expect(ops[0].flowId).toBe('flow-1');
-    expect(ops[0].content).toBe('test content');
+    expectUpsert(ops[0], { content: 'test content' });
     expect(ops[0].timestamp).toBeGreaterThan(0);
   });
 
@@ -81,8 +90,8 @@ describe('offlineQueue', () => {
 
     const ops = await getAllOperations();
     expect(ops).toHaveLength(2);
-    expect(ops[0].content).toBe('first');
-    expect(ops[1].content).toBe('second');
+    expectUpsert(ops[0], { content: 'first' });
+    expectUpsert(ops[1], { content: 'second' });
     expect(ops[0].timestamp).toBeLessThan(ops[1].timestamp);
   });
 
@@ -114,7 +123,7 @@ describe('offlineQueue', () => {
 
     ops = await getAllOperations();
     expect(ops).toHaveLength(1);
-    expect(ops[0].content).toBe('keep');
+    expectUpsert(ops[0], { content: 'keep' });
   });
 
   test('clears all operations', async () => {
@@ -219,10 +228,9 @@ describe('offlineQueue', () => {
 
     expect(consolidated).toHaveLength(2);
     expect(consolidated[0].row_index).toBe(1);
-    expect(consolidated[0].content).toBe('other cell');
+    expectUpsert(consolidated[0], { content: 'other cell' });
     expect(consolidated[1].row_index).toBe(0);
-    expect(consolidated[1].content).toBe('v2');
-    expect(consolidated[1].color).toBe('yellow');
+    expectUpsert(consolidated[1], { content: 'v2', color: 'yellow' });
   });
 
   test('consolidates upsert then delete to keep only delete', () => {
@@ -285,7 +293,7 @@ describe('offlineQueue', () => {
 
     expect(consolidated).toHaveLength(1);
     expect(consolidated[0].type).toBe('upsert');
-    expect(consolidated[0].content).toBe('new content');
+    expectUpsert(consolidated[0], { content: 'new content' });
   });
 
   test('maintains operations for different cells', () => {
@@ -331,9 +339,9 @@ describe('offlineQueue', () => {
     const consolidated = consolidateOperations(ops);
 
     expect(consolidated).toHaveLength(3);
-    expect(consolidated[0].content).toBe('cell 1');
-    expect(consolidated[1].content).toBe('cell 2');
-    expect(consolidated[2].content).toBe('different flow');
+    expectUpsert(consolidated[0], { content: 'cell 1' });
+    expectUpsert(consolidated[1], { content: 'cell 2' });
+    expectUpsert(consolidated[2], { content: 'different flow' });
   });
 
   test('handles empty operation list', () => {
