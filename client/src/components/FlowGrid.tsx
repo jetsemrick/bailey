@@ -368,6 +368,14 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   const { macros } = useKeyboardMacrosContext();
   const selectionRef = useRef<SelectionState>(selection);
   const clipboardRef = useRef<ClipboardData | null>(null);
+  const isEditingRef = useRef(isEditing);
+  const gridRef = useRef(grid);
+  const undoRedoRef = useRef(undoRedo);
+  const navigateRef = useRef(navigate);
+  const macroActionsByShortcutRef = useRef<Map<string, MacroAction[]>>(new Map());
+  const runMacroRef = useRef(runMacro);
+  const applySelectionRef = useRef(applySelection);
+  const bulkUpdateCellsRef = useRef(bulkUpdateCells);
 
   // Track container height to fill viewport with rows
   useEffect(() => {
@@ -433,6 +441,34 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   useEffect(() => {
     clipboardRef.current = clipboard;
   }, [clipboard]);
+
+  useEffect(() => {
+    isEditingRef.current = isEditing;
+  }, [isEditing]);
+
+  useEffect(() => {
+    gridRef.current = grid;
+  }, [grid]);
+
+  useEffect(() => {
+    undoRedoRef.current = undoRedo;
+  }, [undoRedo]);
+
+  useEffect(() => {
+    navigateRef.current = navigate;
+  }, [navigate]);
+
+  useEffect(() => {
+    runMacroRef.current = runMacro;
+  }, [runMacro]);
+
+  useEffect(() => {
+    applySelectionRef.current = applySelection;
+  }, [applySelection]);
+
+  useEffect(() => {
+    bulkUpdateCellsRef.current = bulkUpdateCells;
+  }, [bulkUpdateCells]);
 
   const applySelection = useCallback((next: SelectionState) => {
     const current = selectionRef.current;
@@ -692,25 +728,33 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     ]
   );
 
-  const macroActionsByShortcut = useMemo(() => {
+  useEffect(() => {
     const map = new Map<string, MacroAction[]>();
     for (const macro of macros) {
       map.set(macro.shortcut, macro.actions);
     }
-    return map;
+    macroActionsByShortcutRef.current = map;
   }, [macros]);
 
   // Keyboard undo/redo + copy/paste + save + arrow key navigation when selected (not editing)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
+      const currentUndoRedo = undoRedoRef.current;
+      const currentGrid = gridRef.current;
+      const currentIsEditing = isEditingRef.current;
+      const currentMacroActionsByShortcut = macroActionsByShortcutRef.current;
+      const currentRunMacro = runMacroRef.current;
+      const currentNavigate = navigateRef.current;
+      const currentApplySelection = applySelectionRef.current;
+      const currentBulkUpdateCells = bulkUpdateCellsRef.current;
       
       // Undo
       if (mod && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        const entry = undoRedo.undo();
+        const entry = currentUndoRedo.undo();
         if (entry) {
-          if (undoRedo.isBatchEdit(entry)) {
+          if (currentUndoRedo.isBatchEdit(entry)) {
             for (const edit of entry.edits) {
               updateCell(edit.col, edit.row, edit.previousContent, edit.previousColor as CellColor);
               setCellComment(edit.col, edit.row, edit.previousComment);
@@ -726,9 +770,9 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       // Redo
       if (mod && e.key === 'z' && e.shiftKey) {
         e.preventDefault();
-        const entry = undoRedo.redo();
+        const entry = currentUndoRedo.redo();
         if (entry) {
-          if (undoRedo.isBatchEdit(entry)) {
+          if (currentUndoRedo.isBatchEdit(entry)) {
             for (const edit of entry.edits) {
               updateCell(edit.col, edit.row, edit.newContent, edit.newColor as CellColor);
               setCellComment(edit.col, edit.row, edit.newComment);
@@ -744,7 +788,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       // Grid-scoped copy/paste (DEB-32): never steal from settings, sidebar, auth, etc.
       const clipboardShortcut = shouldHandleFlowClipboardShortcut(e, {
         gridRoot: containerRef.current,
-        isEditing,
+        isEditing: currentIsEditing,
         hasSelection: getSelectionCount(selectionRef.current) > 0,
       });
 
@@ -782,8 +826,8 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
           newComment: u.comment,
         }));
 
-        undoRedo.pushBatch(edits);
-        bulkUpdateCells(updates);
+        currentUndoRedo.pushBatch(edits);
+        currentBulkUpdateCells(updates);
         setCopySourceKeys(nextCopySourceKeys(null, { type: 'paste-success' }));
         return;
       }
@@ -791,20 +835,20 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       // Save
       if (mod && e.key === 's') {
         e.preventDefault();
-        grid.saveNow();
+        currentGrid.saveNow();
         return;
       }
       
       // Macro shortcuts
       const shortcut = shortcutFromKeyboardEvent(e);
       if (shortcut) {
-        const actions = macroActionsByShortcut.get(shortcut);
+        const actions = currentMacroActionsByShortcut.get(shortcut);
         const target = e.target as HTMLElement;
         const isTypingTarget =
           target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-        if (actions && actions.length > 0 && !isTypingTarget && !isEditing) {
+        if (actions && actions.length > 0 && !isTypingTarget && !currentIsEditing) {
           e.preventDefault();
-          runMacro(actions);
+          currentRunMacro(actions);
           return;
         }
       }
@@ -816,10 +860,11 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
         return;
       }
       
-      if (selection.primaryCell && !isEditing) {
+      const currentSelection = selectionRef.current;
+      if (currentSelection.primaryCell && !currentIsEditing) {
         // Delete/Backspace - clear all selected cells
         if ((e.key === 'Delete' || e.key === 'Backspace') && !mod) {
-          const cells = getSelectedCells(selectionRef.current);
+          const cells = getSelectedCells(currentSelection);
           if (cells.length === 0) return;
           
           const edits = cells.map(cell => ({
@@ -840,9 +885,9 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
           if (hasAnyContent) {
             e.preventDefault();
             if (cells.length === 1) {
-              undoRedo.pushEdit(edits[0]);
+              currentUndoRedo.pushEdit(edits[0]);
             } else {
-              undoRedo.pushBatch(edits);
+              currentUndoRedo.pushBatch(edits);
             }
             
             for (const edit of edits) {
@@ -853,13 +898,13 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
         } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
           e.preventDefault();
           const dir = e.key.replace('Arrow', '').toLowerCase() as 'up' | 'down' | 'left' | 'right';
-          navigate(selection.primaryCell, dir);
+          currentNavigate(currentSelection.primaryCell, dir);
         } else if (e.key === 'Enter') {
           e.preventDefault();
           setIsEditing(true);
         } else if (e.key === 'Escape') {
           e.preventDefault();
-          applySelection(createEmptySelection());
+          currentApplySelection(createEmptySelection());
         } else if (
           e.key.length === 1 &&
           !e.ctrlKey &&
@@ -876,9 +921,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [
-    undoRedo, updateCell, setCellComment, getCellContent, getCellColor, getCellComment,
-    grid, selection, isEditing, navigate, macroActionsByShortcut, runMacro,
-    bulkUpdateCells, applySelection,
+    updateCell, setCellComment, getCellContent, getCellColor, getCellComment,
   ]);
 
   // DnD handlers
