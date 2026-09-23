@@ -27,53 +27,62 @@ const MAX_STACK = 100;
  * Undo/redo stack for cell-level edits.
  * Integrates with useFlowGrid by returning handlers that should wrap cell updates.
  * Supports batch edits that undo/redo as a single operation.
+ * 
+ * Stacks are stored in refs to prevent re-renders on every push.
+ * canUndo/canRedo are exposed as state for UI reactivity if needed.
  */
 export function useUndoRedo() {
-  const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
-  const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
-  const stackRef = useRef({ undo: undoStack, redo: redoStack });
-  stackRef.current = { undo: undoStack, redo: redoStack };
+  const undoStackRef = useRef<HistoryEntry[]>([]);
+  const redoStackRef = useRef<HistoryEntry[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   const pushEdit = useCallback((edit: CellEdit) => {
-    setUndoStack((prev) => {
-      const next = [...prev, edit];
-      if (next.length > MAX_STACK) next.shift();
-      return next;
-    });
-    setRedoStack([]);
+    undoStackRef.current = [...undoStackRef.current, edit];
+    if (undoStackRef.current.length > MAX_STACK) {
+      undoStackRef.current.shift();
+    }
+    redoStackRef.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
   }, []);
 
   const pushBatch = useCallback((edits: CellEdit[]) => {
     if (edits.length === 0) return;
-    setUndoStack((prev) => {
-      const next = [...prev, { edits }];
-      if (next.length > MAX_STACK) next.shift();
-      return next;
-    });
-    setRedoStack([]);
+    undoStackRef.current = [...undoStackRef.current, { edits }];
+    if (undoStackRef.current.length > MAX_STACK) {
+      undoStackRef.current.shift();
+    }
+    redoStackRef.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
   }, []);
 
   const undo = useCallback((): CellEdit | BatchEdit | null => {
-    const stack = stackRef.current.undo;
-    if (stack.length === 0) return null;
-    const entry = stack[stack.length - 1];
-    setUndoStack((prev) => prev.slice(0, -1));
-    setRedoStack((prev) => [...prev, entry]);
+    if (undoStackRef.current.length === 0) return null;
+    const entry = undoStackRef.current[undoStackRef.current.length - 1];
+    undoStackRef.current = undoStackRef.current.slice(0, -1);
+    redoStackRef.current = [...redoStackRef.current, entry];
+    setCanUndo(undoStackRef.current.length > 0);
+    setCanRedo(true);
     return entry;
   }, []);
 
   const redo = useCallback((): CellEdit | BatchEdit | null => {
-    const stack = stackRef.current.redo;
-    if (stack.length === 0) return null;
-    const entry = stack[stack.length - 1];
-    setRedoStack((prev) => prev.slice(0, -1));
-    setUndoStack((prev) => [...prev, entry]);
+    if (redoStackRef.current.length === 0) return null;
+    const entry = redoStackRef.current[redoStackRef.current.length - 1];
+    redoStackRef.current = redoStackRef.current.slice(0, -1);
+    undoStackRef.current = [...undoStackRef.current, entry];
+    setCanUndo(true);
+    setCanRedo(redoStackRef.current.length > 0);
     return entry;
   }, []);
 
   const clear = useCallback(() => {
-    setUndoStack([]);
-    setRedoStack([]);
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    setCanUndo(false);
+    setCanRedo(false);
   }, []);
 
   return {
@@ -82,8 +91,8 @@ export function useUndoRedo() {
     undo,
     redo,
     clear,
-    canUndo: undoStack.length > 0,
-    canRedo: redoStack.length > 0,
+    canUndo,
+    canRedo,
     isBatchEdit,
   };
 }
