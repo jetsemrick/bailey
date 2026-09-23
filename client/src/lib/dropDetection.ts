@@ -1,5 +1,3 @@
-import { SPEECH_COLUMNS } from '../db/types';
-
 export interface CellPosition {
   col: number;
   row: number;
