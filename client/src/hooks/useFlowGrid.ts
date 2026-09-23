@@ -767,6 +767,41 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     [roundId, flows]
   );
 
+  const addFlowFromTemplate = useCallback(
+    async (tabs: import('../db/types').FlowTabTemplateTab[]): Promise<boolean> => {
+      if (!roundId || tabs.length === 0) return false;
+      setError(null);
+
+      const hasCxInTemplate = tabs.some(t => t.tab_kind === 'cx' || t.position_name === 'CX');
+      if (hasCxInTemplate && flows.some((f) => f.tab_kind === 'cx')) {
+        setError('This template includes a CX tab, but this round already has one. Only one CX tab is allowed per round.');
+        return false;
+      }
+
+      const created: Awaited<ReturnType<typeof api.createFlow>>[] = [];
+      try {
+        let displayOrder = flows.length;
+        for (const tab of tabs) {
+          const flow = await api.createFlow(roundId, {
+            position_name: tab.position_name,
+            initiated_by: tab.initiated_by,
+            display_order: displayOrder++,
+            tab_kind: tab.tab_kind ?? 'standard',
+          });
+          created.push(flow);
+        }
+        setFlows((prev) => [...prev, ...created]);
+        setActiveFlowId(created[created.length - 1].id);
+        setCells(new Map());
+        return true;
+      } catch (err) {
+        setError(api.toError(err, 'Failed to create tabs from template').message);
+        return false;
+      }
+    },
+    [roundId, flows]
+  );
+
   const renameFlow = useCallback(async (id: string, name: string) => {
     const updated = await api.updateFlow(id, { position_name: name });
     setFlows((prev) => prev.map((f) => (f.id === id ? updated : f)));
@@ -825,6 +860,7 @@ export function useFlowGrid(roundId: string | undefined, _round?: Round | null) 
     savedFlowRevisions,
     saveNow,
     addFlow,
+    addFlowFromTemplate,
     renameFlow,
     removeFlow,
     reorderFlows,
