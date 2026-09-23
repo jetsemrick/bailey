@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import type { FlowTabKind, FlowTabTemplate, FlowTabTemplateTab } from '../db/types';
+import type { FlowTabKind, FlowTabTemplateTab } from '../db/types';
 import { BUILT_IN_TEMPLATES } from '../db/types';
 import { useFlowTabTemplates } from '../hooks/useFlowTabTemplates';
 
