@@ -848,7 +848,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
         const target = e.target as HTMLElement;
         const isTypingTarget =
           target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-        if (actions && actions.length > 0 && !isTypingTarget && !currentIsEditing) {
+        if (actions && actions.length > 0 && !isTypingTarget && !currentIsEditing && currentRunMacro) {
           e.preventDefault();
           currentRunMacro(actions);
           return;
@@ -900,13 +900,13 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
         } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
           e.preventDefault();
           const dir = e.key.replace('Arrow', '').toLowerCase() as 'up' | 'down' | 'left' | 'right';
-          currentNavigate(currentSelection.primaryCell, dir);
+          currentNavigate?.(currentSelection.primaryCell, dir);
         } else if (e.key === 'Enter') {
           e.preventDefault();
           setIsEditing(true);
         } else if (e.key === 'Escape') {
           e.preventDefault();
-          currentApplySelection(createEmptySelection());
+          currentApplySelection?.(createEmptySelection());
         } else if (
           e.key.length === 1 &&
           !e.ctrlKey &&
