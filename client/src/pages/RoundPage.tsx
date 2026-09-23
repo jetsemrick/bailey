@@ -109,6 +109,11 @@ function RoundPageInner() {
     if (ok) setShowNewFlow(false);
   };
 
+  const handleAddFlowFromTemplate = async (tabs: import('../db/types').FlowTabTemplateTab[]) => {
+    const ok = await grid.addFlowFromTemplate(tabs);
+    if (ok) setShowNewFlow(false);
+  };
+
   if (loadingMeta || grid.loading) {
     return (
       <Layout>
@@ -376,6 +381,7 @@ function RoundPageInner() {
         <NewFlowDialog
           hasCxTab={grid.flows.some((f) => f.tab_kind === 'cx')}
           onSubmit={handleAddFlow}
+          onSubmitTemplate={handleAddFlowFromTemplate}
           onCancel={() => setShowNewFlow(false)}
         />
       )}

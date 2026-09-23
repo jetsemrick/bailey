@@ -656,6 +656,61 @@ export async function saveKeyboardMacrosRemote(macros: KeyboardMacro[]): Promise
   if (error) throw error;
 }
 
+// ── Flow Tab Templates ────────────────────────────────────────
+
+export async function listFlowTabTemplates(): Promise<import('./types').FlowTabTemplate[]> {
+  const userId = await uid();
+  const { data, error } = await supabase
+    .from('flow_tab_templates')
+    .select('*')
+    .eq('user_id', userId)
+    .order('name', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getFlowTabTemplate(id: string): Promise<import('./types').FlowTabTemplate> {
+  const { data, error } = await supabase
+    .from('flow_tab_templates')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function createFlowTabTemplate(
+  fields: Pick<import('./types').FlowTabTemplate, 'name' | 'tabs'>
+): Promise<import('./types').FlowTabTemplate> {
+  const userId = await uid();
+  const { data, error } = await supabase
+    .from('flow_tab_templates')
+    .insert({ user_id: userId, ...fields })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateFlowTabTemplate(
+  id: string,
+  fields: Partial<Pick<import('./types').FlowTabTemplate, 'name' | 'tabs'>>
+): Promise<import('./types').FlowTabTemplate> {
+  const { data, error } = await supabase
+    .from('flow_tab_templates')
+    .update(fields)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteFlowTabTemplate(id: string): Promise<void> {
+  const { error } = await supabase.from('flow_tab_templates').delete().eq('id', id);
+  if (error) throw error;
+}
+
 // ── Export / Import helpers ──────────────────────────────────
 
 export type ExportedRoundData = Omit<Round, 'user_id'> & {
