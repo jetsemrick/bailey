@@ -253,6 +253,26 @@ function RoundPageInner() {
 
           {/* Save status and error bar */}
           <div className="shrink-0">
+            {/* Online/Offline indicator (DEB-75) */}
+            {!grid.isOnline && (
+              <div className="border-t px-4 py-1.5 text-xs flex items-center gap-2 bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400">
+                <svg
+                  className="h-3 w-3"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                <span>Offline{grid.pendingCount > 0 ? ` · ${grid.pendingCount} changes queued` : ''}</span>
+              </div>
+            )}
             {/* Save status indicator */}
             {grid.saveStatus !== 'idle' && (
               <div
@@ -261,6 +281,8 @@ function RoundPageInner() {
                     ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400'
                     : grid.saveStatus === 'saved'
                     ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-600 dark:text-green-400'
+                    : grid.saveStatus === 'pending'
+                    ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400'
                     : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400'
                 }`}
               >
@@ -302,6 +324,25 @@ function RoundPageInner() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                     <span>Saved</span>
+                  </>
+                )}
+                {grid.saveStatus === 'pending' && (
+                  <>
+                    <svg
+                      className="h-3 w-3"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <span>Queued for sync</span>
                   </>
                 )}
                 {grid.saveStatus === 'error' && (
