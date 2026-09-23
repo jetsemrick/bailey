@@ -38,6 +38,7 @@ function RoundPageInner() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [viewMode, setViewMode] = useState<'flow' | 'analytics' | 'split'>('flow');
   const [rebuttalFocus, setRebuttalFocus] = useState(true);
+  const [showDrops, setShowDrops] = useState(false);
   /** Persists across Flow / Decision view switches (DecisionView unmounts). */
   const [decisionVisibleFlowIds, setDecisionVisibleFlowIds] = useState<Set<string>>(new Set());
   const decisionVisibilityReadyRef = useRef(false);
@@ -179,24 +180,44 @@ function RoundPageInner() {
                 Decision
               </button>
             )}
-            {viewMode === 'split' && (
-              <div className="ml-auto flex items-center gap-2 pr-3">
-                <span className="text-xs text-foreground/50">Rebuttal Focus</span>
-                <button
-                  onClick={() => setRebuttalFocus((v) => !v)}
-                  className={`relative w-8 h-[18px] rounded-full transition-colors ${
-                    rebuttalFocus ? 'bg-accent' : 'bg-card-04'
-                  }`}
-                  aria-label="Toggle rebuttal focus"
-                >
-                  <span
-                    className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${
-                      rebuttalFocus ? 'translate-x-[14px]' : 'translate-x-0'
+            <div className="ml-auto flex items-center gap-4 pr-3">
+              {(viewMode === 'flow' || viewMode === 'split') && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-foreground/50">Highlight Drops</span>
+                  <button
+                    onClick={() => setShowDrops((v) => !v)}
+                    className={`relative w-8 h-[18px] rounded-full transition-colors ${
+                      showDrops ? 'bg-accent' : 'bg-card-04'
                     }`}
-                  />
-                </button>
-              </div>
-            )}
+                    aria-label="Toggle drop highlighting"
+                  >
+                    <span
+                      className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${
+                        showDrops ? 'translate-x-[14px]' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              )}
+              {viewMode === 'split' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-foreground/50">Rebuttal Focus</span>
+                  <button
+                    onClick={() => setRebuttalFocus((v) => !v)}
+                    className={`relative w-8 h-[18px] rounded-full transition-colors ${
+                      rebuttalFocus ? 'bg-accent' : 'bg-card-04'
+                    }`}
+                    aria-label="Toggle rebuttal focus"
+                  >
+                    <span
+                      className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${
+                        rebuttalFocus ? 'translate-x-[14px]' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Grid area or Analytics */}
@@ -213,7 +234,7 @@ function RoundPageInner() {
                     variant={flowSheetVariant}
                   />
                 ) : (
-                  <FlowGrid grid={grid} defaultScrollToEnd variant={flowSheetVariant} />
+                  <FlowGrid grid={grid} defaultScrollToEnd variant={flowSheetVariant} showDrops={showDrops} />
                 )}
               </div>
               <div className="flex flex-col w-[380px] shrink-0 min-h-0 bg-background">
@@ -221,7 +242,7 @@ function RoundPageInner() {
               </div>
             </div>
           ) : viewMode === 'flow' ? (
-            <FlowGrid grid={grid} variant={flowSheetVariant} />
+            <FlowGrid grid={grid} variant={flowSheetVariant} showDrops={showDrops} />
           ) : grid.activeFlow ? (
             <FlowAnalytics
               flow={grid.activeFlow}
