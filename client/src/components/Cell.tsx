@@ -23,6 +23,8 @@ interface CellProps {
   isCopySource?: boolean;
   /** DEB-32: empty/blocked paste flash on this cell */
   pasteBlocked?: boolean;
+  /** DEB-74: dropped argument indicator (no response in next speech) */
+  isDropped?: boolean;
   /** Whether this cell is in editing mode (contenteditable focused, arrow keys move caret) */
   editing?: boolean;
   onFocus?: (e: React.MouseEvent) => void;
@@ -90,6 +92,7 @@ const Cell = memo(function Cell({
   isPrimary = false,
   isCopySource = false,
   pasteBlocked = false,
+  isDropped = false,
   editing,
   onFocus,
   onStartEditing,
@@ -245,6 +248,7 @@ const Cell = memo(function Cell({
             : 'border border-transparent'
         }${isCopySource ? ' shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.38)]' : ''}`;
   const editingBgClass = editing ? 'bg-card-01' : '';
+  const droppedClass = isDropped ? 'border-l-2 border-l-orange-400 dark:border-l-orange-500' : '';
 
   return (
     <div
@@ -256,12 +260,13 @@ const Cell = memo(function Cell({
       onDoubleClick={!editing ? onStartEditing : undefined}
       onBlur={() => { commitEdit(); onStopEditing?.(); }}
       onKeyDown={handleKeyDown}
-      className={`w-full min-h-[28px] p-1 focus:outline-none cursor-text whitespace-pre-wrap break-words ${selectedClass} ${editingBgClass} ${sideTextColor} ${colorClass}${pasteBlocked ? ' flow-paste-blocked' : ''}`}
+      className={`w-full min-h-[28px] p-1 focus:outline-none cursor-text whitespace-pre-wrap break-words ${selectedClass} ${editingBgClass} ${sideTextColor} ${colorClass} ${droppedClass}${pasteBlocked ? ' flow-paste-blocked' : ''}`}
       style={{ fontSize: 'var(--cell-font-size, 14px)' }}
       role="gridcell"
       aria-selected={selected}
       data-copy-source={isCopySource ? 'true' : undefined}
       data-paste-blocked={pasteBlocked ? 'true' : undefined}
+      data-dropped={isDropped ? 'true' : undefined}
     />
   );
 });

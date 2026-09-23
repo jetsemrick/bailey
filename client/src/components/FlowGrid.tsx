@@ -53,6 +53,7 @@ import {
   getMultiDragCells,
   type CellData,
 } from './flowColumnReorder';
+import { detectDrops, isDropped } from '../lib/dropDetection';
 
 type FlowGridApi = ReturnType<typeof useFlowGrid>;
 
@@ -64,6 +65,8 @@ interface FlowGridProps {
   defaultScrollToEnd?: boolean;
   /** Visual treatment; sharp = full grid borders with square corners */
   variant?: FlowSheetVariant;
+  /** DEB-74: highlight dropped arguments (no response in next speech) */
+  showDrops?: boolean;
 }
 
 const COLUMN_COLORS: Record<string, string> = {
@@ -78,14 +81,14 @@ const HEADER_HEIGHT = 36; // approximate column header height
 
 const SortableCell = memo(function SortableCell({
   id, col, row, content, color, side, onUpdate, onColorChange,
-  selected, isPrimary, isCopySource, pasteBlocked, editing, pendingInput, onClearPendingInput,
+  selected, isPrimary, isCopySource, pasteBlocked, isDropped, editing, pendingInput, onClearPendingInput,
   onFocus, onStartEditing, onStopEditing, onNavigate,
   comment, onContextMenu, variant,
 }: {
   id: string; col: number; row: number; content: string; color: CellColor;
   side: 'aff' | 'neg';
   onUpdate: (c: string) => void; onColorChange: (c: CellColor) => void;
-  selected: boolean; isPrimary: boolean; isCopySource: boolean; pasteBlocked: boolean; editing: boolean;
+  selected: boolean; isPrimary: boolean; isCopySource: boolean; pasteBlocked: boolean; isDropped: boolean; editing: boolean;
   pendingInput: string | null; onClearPendingInput: () => void;
   onFocus: (e: React.MouseEvent) => void; onStartEditing: () => void; onStopEditing: () => void;
   onNavigate: (d: 'up' | 'down' | 'left' | 'right') => void;
@@ -133,6 +136,7 @@ const SortableCell = memo(function SortableCell({
         isPrimary={isPrimary}
         isCopySource={isCopySource}
         pasteBlocked={pasteBlocked}
+        isDropped={isDropped}
         editing={editing}
         pendingInput={pendingInput}
         onClearPendingInput={onClearPendingInput}
@@ -172,6 +176,7 @@ const FlowColumn = memo(function FlowColumn({
   selection,
   copySourceKeys,
   blockedPasteKey,
+  droppedKeys,
   isEditing,
   pendingInput,
   onClearPendingInput,
@@ -195,6 +200,7 @@ const FlowColumn = memo(function FlowColumn({
   selection: SelectionState;
   copySourceKeys: Set<string> | null;
   blockedPasteKey: string | null;
+  droppedKeys: Set<string> | null;
   isEditing: boolean;
   pendingInput: string | null;
   onClearPendingInput: () => void;
@@ -247,6 +253,7 @@ const FlowColumn = memo(function FlowColumn({
               isPrimary={primary}
               isCopySource={isCopySourceCell(copySourceKeys, dataCol, rowIdx)}
               pasteBlocked={blockedPasteKey === cellKey(dataCol, rowIdx)}
+              isDropped={isDropped(droppedKeys, dataCol, rowIdx)}
               editing={editing}
               pendingInput={primary ? pendingInput : null}
               onClearPendingInput={onClearPendingInput}
@@ -347,7 +354,7 @@ function CommentPopover({
   );
 }
 
-export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default' }: FlowGridProps) {
+export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default', showDrops = false }: FlowGridProps) {
   const {
     activeFlowId, activeFlow, getCellContent, getCellColor, getCellComment, updateCell, updateCellColor, setCellComment,
     getColumnRowCount, bulkUpdateCells,
@@ -570,6 +577,12 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     [activeFlow?.initiated_by, activeFlow?.tab_kind]
   );
   const dataCols = useMemo(() => flowColumns.map((c) => c.dataCol), [flowColumns]);
+
+  // DEB-74: Compute dropped arguments
+  const droppedKeys = useMemo(() => {
+    if (!showDrops) return null;
+    return detectDrops(getCellContent, flowColumns, maxRows);
+  }, [showDrops, getCellContent, flowColumns, maxRows, grid.cells]);
 
   // Navigation
   const navigate = useCallback(
@@ -1063,6 +1076,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
               selection={selection}
               copySourceKeys={copySourceKeys}
               blockedPasteKey={blockedPasteKey}
+              droppedKeys={droppedKeys}
               isEditing={isEditing}
               pendingInput={pendingInput}
               onClearPendingInput={() => setPendingInput(null)}
