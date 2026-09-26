@@ -197,7 +197,7 @@ function RoundPageInner() {
                     aria-label="Toggle drop highlighting"
                   >
                     <span
-                      className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${
+                      className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-accent-foreground transition-transform ${
                         showDrops ? 'translate-x-[14px]' : 'translate-x-0'
                       }`}
                     />
@@ -215,7 +215,7 @@ function RoundPageInner() {
                     aria-label="Toggle rebuttal focus"
                   >
                     <span
-                      className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${
+                      className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-accent-foreground transition-transform ${
                         rebuttalFocus ? 'translate-x-[14px]' : 'translate-x-0'
                       }`}
                     />

@@ -36,7 +36,7 @@ export default function Layout({ children, breadcrumbs, headerActions }: LayoutP
         <div className="flex items-center gap-2 min-w-0">
           <Link
             to="/"
-            className="text-lg font-bold tracking-tight hover:opacity-80 transition-opacity shrink-0"
+            className="theme-brand text-lg font-bold tracking-tight hover:opacity-80 transition-opacity shrink-0"
           >
             Bailey
           </Link>

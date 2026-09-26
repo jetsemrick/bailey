@@ -5,6 +5,8 @@ import * as api from '../db/api';
 import { MACRO_ACTION_OPTIONS, type KeyboardMacro, shortcutFromKeyboardEvent } from '../keyboardMacros';
 import { useKeyboardMacrosContext } from '../contexts/KeyboardMacrosContext';
 import { useFlowSheetVariant } from '../contexts/FlowSheetVariantContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { THEMES } from '../lib/themeSettings';
 import type { FlowSheetVariant } from './flowSheetVariant';
 
 const FONT_SIZE_KEY = 'bailey-font-size';
@@ -34,6 +36,7 @@ export default function Settings({ isOpen, onOpenChange }: SettingsProps) {
     hideSidebar,
     setHideSidebar,
   } = useFlowSheetVariant();
+  const { theme, setTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<SettingsTab>('display');
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
   const [macros, setMacros] = useState<KeyboardMacro[]>([]);
@@ -236,6 +239,43 @@ export default function Settings({ isOpen, onOpenChange }: SettingsProps) {
                   </div>
 
                   <div>
+                    <label className="block text-sm font-medium mb-1">Design Scheme</label>
+                    <p className="text-xs text-foreground/60 mb-3">
+                      Colors and type for the whole app. Orbit is a high-contrast aerospace palette inspired by spacex.com.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {THEMES.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => setTheme(option.id)}
+                          className={`text-left px-3 py-2.5 border rounded transition-colors ${
+                            theme === option.id
+                              ? 'border-accent bg-accent/10 text-foreground'
+                              : 'border-card-04 bg-card-01 text-foreground/70 hover:bg-card-02 hover:text-foreground'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2 mb-1.5">
+                            {option.id === 'default' ? (
+                              <>
+                                <span className="h-3 w-3 rounded-sm bg-[#f7f7f4] border border-[#e1e0db]" />
+                                <span className="h-3 w-3 rounded-sm bg-[#f54e00]" />
+                              </>
+                            ) : (
+                              <>
+                                <span className="h-3 w-3 rounded-sm bg-black border border-[#545458]" />
+                                <span className="h-3 w-3 rounded-sm bg-[#f0f0fa]" />
+                              </>
+                            )}
+                            <span className="text-sm font-medium">{option.label}</span>
+                          </span>
+                          <span className="block text-xs text-foreground/60">{option.description}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
                     <label className="block text-sm font-medium mb-1">Flow Sheet Style</label>
                     <p className="text-xs text-foreground/60 mb-3">
                       Applies to flow grids and tabs in every round. Sharp uses spreadsheet-style grid lines and square corners.
@@ -322,7 +362,7 @@ export default function Settings({ isOpen, onOpenChange }: SettingsProps) {
                       <button
                         type="submit"
                         disabled={profileSubmitting}
-                        className="px-3 py-1.5 text-xs bg-accent text-white rounded hover:opacity-90 transition-opacity disabled:opacity-50"
+                        className="px-3 py-1.5 text-xs bg-accent text-accent-foreground rounded hover:opacity-90 transition-opacity disabled:opacity-50"
                       >
                         {profileSubmitting ? 'Saving...' : 'Save Profile'}
                       </button>
@@ -403,7 +443,7 @@ export default function Settings({ isOpen, onOpenChange }: SettingsProps) {
                     <button
                       type="button"
                       onClick={handleSaveMacros}
-                      className="px-3 py-1.5 text-xs bg-accent text-white rounded hover:opacity-90 transition-opacity disabled:opacity-50"
+                      className="px-3 py-1.5 text-xs bg-accent text-accent-foreground rounded hover:opacity-90 transition-opacity disabled:opacity-50"
                       disabled={!macrosDirty}
                     >
                       Save Shortcuts

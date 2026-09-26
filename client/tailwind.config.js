@@ -4,14 +4,21 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  darkMode: 'class',
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['var(--font-sans)'],
+        display: ['var(--font-display)'],
+        mono: ['var(--font-mono)'],
+      },
       colors: {
         background: 'rgb(var(--bg) / <alpha-value>)',
         foreground: 'rgb(var(--fg) / <alpha-value>)',
         accent: {
           DEFAULT: 'rgb(var(--accent) / <alpha-value>)',
           hover: 'rgb(var(--accent) / 0.9)',
+          foreground: 'rgb(var(--accent-fg) / <alpha-value>)',
         },
         card: {
           DEFAULT: 'rgb(var(--card) / <alpha-value>)',
