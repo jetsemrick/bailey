@@ -100,7 +100,7 @@ export default function AuthPage() {
           <div className="mt-6 flex gap-3">
             <Link
               to="/login"
-              className="px-4 py-2 bg-accent text-white rounded font-medium hover:bg-accent/90 transition-colors"
+              className="px-4 py-2 bg-accent text-accent-foreground rounded font-medium hover:bg-accent/90 transition-colors"
             >
               Go to Sign In
             </Link>
@@ -172,7 +172,7 @@ export default function AuthPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-2 bg-accent text-white rounded font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors"
+            className="w-full py-2 bg-accent text-accent-foreground rounded font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors"
           >
             {submitting ? 'Updating password...' : 'Update Password'}
           </button>

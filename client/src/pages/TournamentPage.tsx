@@ -128,7 +128,7 @@ export default function TournamentPage() {
             />
             <button
               onClick={() => setShowRoundForm(true)}
-              className="px-4 py-1.5 bg-accent text-white rounded text-sm font-medium hover:bg-accent/90 transition-colors"
+              className="px-4 py-1.5 bg-accent text-accent-foreground rounded text-sm font-medium hover:bg-accent/90 transition-colors"
             >
               + Add Round
             </button>

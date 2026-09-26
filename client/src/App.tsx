@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { AuthProvider } from './auth/AuthContext';
 import { FlowSheetVariantProvider } from './contexts/FlowSheetVariantContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import AuthGuard from './auth/AuthGuard';
 import AdminGuard from './auth/AdminGuard';
 import LoginPage from './auth/LoginPage';
@@ -25,6 +26,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ThemeProvider>
         <FlowSheetVariantProvider>
         <Routes>
           <Route path="/auth" element={<AuthPage />} />
@@ -70,6 +72,7 @@ export default function App() {
           />
         </Routes>
         </FlowSheetVariantProvider>
+        </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>
   );

@@ -136,7 +136,7 @@ export default function TournamentForm({ initial, onSubmit, onCancel, title, def
           <div className="flex gap-2 pt-2">
             <button
               type="submit"
-              className="flex-1 py-1.5 bg-accent text-white rounded text-sm font-medium hover:bg-accent/90 transition-colors"
+              className="flex-1 py-1.5 bg-accent text-accent-foreground rounded text-sm font-medium hover:bg-accent/90 transition-colors"
             >
               Save
             </button>

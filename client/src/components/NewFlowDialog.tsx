@@ -263,7 +263,7 @@ export default function NewFlowDialog({
                     type="button"
                     onClick={handleSaveTemplate}
                     disabled={savingTemplate || !saveTemplateName.trim()}
-                    className="flex-1 py-1 text-sm bg-accent text-white rounded hover:bg-accent/90 transition-colors disabled:opacity-60"
+                    className="flex-1 py-1 text-sm bg-accent text-accent-foreground rounded hover:bg-accent/90 transition-colors disabled:opacity-60"
                   >
                     Save
                   </button>
@@ -285,7 +285,7 @@ export default function NewFlowDialog({
               <button
                 type="submit"
                 disabled={submitting || (sheetKind === 'cx' && hasCxTab)}
-                className="flex-1 py-1.5 bg-accent text-white rounded text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-60 disabled:pointer-events-none"
+                className="flex-1 py-1.5 bg-accent text-accent-foreground rounded text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-60 disabled:pointer-events-none"
               >
                 {sheetKind === 'cx'
                   ? 'Create CX tab'
@@ -359,7 +359,7 @@ export default function NewFlowDialog({
               <button
                 type="submit"
                 disabled={submitting || !selectedTemplateId}
-                className="flex-1 py-1.5 bg-accent text-white rounded text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-60 disabled:pointer-events-none"
+                className="flex-1 py-1.5 bg-accent text-accent-foreground rounded text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-60 disabled:pointer-events-none"
               >
                 Apply Template
               </button>
