@@ -29,6 +29,20 @@ export default function FlowTabs({
   const [dragId, setDragId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; rect: DOMRect } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!activeFlowId || !stripRef.current) return;
+    const el = stripRef.current.querySelector<HTMLElement>(`[data-flow-tab="${activeFlowId}"]`);
+    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [activeFlowId, flows.length]);
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const strip = e.currentTarget;
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && strip.scrollWidth > strip.clientWidth) {
+      strip.scrollLeft += e.deltaY;
+    }
+  };
 
   useEffect(() => {
     if (editingId && inputRef.current) {
@@ -99,15 +113,25 @@ export default function FlowTabs({
   };
 
   return (
-    <div className="flex items-center border-t border-card-04 bg-card px-2 py-1 gap-1 overflow-x-auto shrink-0">
+    <div className="flex items-stretch border-t border-card-04 bg-card shrink-0">
+      <div
+        ref={stripRef}
+        role="tablist"
+        aria-label="Flow tabs"
+        onWheel={handleWheel}
+        className="flex flex-1 min-w-0 flex-nowrap items-center gap-1 px-1.5 sm:px-2 py-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
       {flows.map((flow) => (
         <div
           key={flow.id}
+          data-flow-tab={flow.id}
+          role="tab"
+          aria-selected={activeFlowId === flow.id}
           draggable
           onDragStart={(e) => handleDragStart(e, flow.id)}
           onDragOver={handleDragOver}
           onDrop={(e) => handleDrop(e, flow.id)}
-          className={`px-3 py-1 cursor-pointer text-sm transition-colors select-none ${
+          className={`shrink-0 max-w-[9rem] sm:max-w-[14rem] px-2.5 sm:px-3 py-1 cursor-pointer text-[13px] sm:text-sm whitespace-nowrap transition-colors select-none ${
             isSharp
               ? 'border border-card-04 -mb-px'
               : 'rounded-t border-t border-x'
@@ -119,7 +143,7 @@ export default function FlowTabs({
           onClick={() => onSelect(flow.id)}
           onDoubleClick={() => startRename(flow)}
           onContextMenu={(e) => handleContextMenu(e, flow.id)}
-          title={`${flow.position_name} (${flow.initiated_by})`}
+          title={`${flow.position_name} (${flow.initiated_by === 'aff' ? 'Aff' : 'Neg'})`}
         >
           {editingId === flow.id ? (
             <input
@@ -128,28 +152,32 @@ export default function FlowTabs({
               onChange={(e) => setEditValue(e.target.value)}
               onBlur={() => commitRename(flow.id)}
               onKeyDown={(e) => handleKeyDown(e, flow.id)}
-              className={`bg-background border border-accent px-1 min-w-[80px] focus:outline-none text-foreground text-sm ${isSharp ? '' : 'rounded'}`}
+              className={`w-full bg-background border border-accent px-1 min-w-[80px] focus:outline-none text-foreground text-sm ${isSharp ? '' : 'rounded'}`}
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1 min-w-0">
               <span
-                className={`w-1.5 h-1.5 rounded-full ${
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                   flow.initiated_by === 'aff' ? 'bg-blue-500' : 'bg-red-500'
                 }`}
               />
-              {flow.position_name}
+              <span className="truncate">{flow.position_name}</span>
             </span>
           )}
         </div>
       ))}
-      <button
-        onClick={onAdd}
-        className={`px-3 py-1 text-foreground/60 hover:bg-card-02 hover:text-foreground transition-colors text-sm font-semibold shrink-0 ${isSharp ? 'border border-card-04' : 'rounded'}`}
-        title="Add new flow tab"
-      >
-        +
-      </button>
+      </div>
+      <div className="flex items-center shrink-0 px-1 border-l border-card-04">
+        <button
+          onClick={onAdd}
+          className={`px-3 py-1 text-foreground/60 hover:bg-card-02 hover:text-foreground transition-colors text-sm font-semibold ${isSharp ? 'border border-card-04' : 'rounded'}`}
+          title="Add new flow tab"
+          aria-label="Add new flow tab"
+        >
+          +
+        </button>
+      </div>
 
       {deleteConfirm && (
         <div
