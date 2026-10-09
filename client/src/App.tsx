@@ -12,6 +12,7 @@ import HomePage from './pages/HomePage';
 const TournamentPage = lazy(() => import('./pages/TournamentPage'));
 const RoundPage = lazy(() => import('./pages/RoundPage'));
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
+const RoundFixturePage = import.meta.env.DEV ? lazy(() => import('./dev/RoundFixturePage')) : null;
 
 function LoadingFallback() {
   return (
@@ -48,6 +49,16 @@ export default function App() {
               </AuthGuard>
             }
           />
+          {RoundFixturePage && (
+            <Route
+              path="/round/__fixture"
+              element={
+                <Suspense fallback={<LoadingFallback />}>
+                  <RoundFixturePage />
+                </Suspense>
+              }
+            />
+          )}
           <Route
             path="/round/:id"
             element={

@@ -13,7 +13,7 @@ import * as api from '../db/api';
 import type { Profile, UserRole } from '../db/types';
 import { getPasswordResetRedirectUrl } from './passwordReset';
 
-interface AuthState {
+export interface AuthState {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
@@ -28,7 +28,8 @@ interface AuthState {
   refreshProfile: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthState | null>(null);
+/** Exported so dev fixtures can provide a stub session. */
+export const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
