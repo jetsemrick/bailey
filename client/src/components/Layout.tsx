@@ -1,5 +1,6 @@
 import { type ReactNode, useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { ChevronLeft } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { KeyboardMacrosProvider } from '../contexts/KeyboardMacrosContext';
 import Settings from './Settings';
@@ -23,6 +24,9 @@ export default function Layout({ children, breadcrumbs, headerActions }: LayoutP
   const [showSettings, setShowSettings] = useState(false);
   const location = useLocation();
 
+  const parentCrumb =
+    breadcrumbs && breadcrumbs.length > 1 ? breadcrumbs[breadcrumbs.length - 2] : undefined;
+
   // Close menu on route change
   useEffect(() => {
     setShowUserMenu(false);
@@ -32,38 +36,54 @@ export default function Layout({ children, breadcrumbs, headerActions }: LayoutP
     <KeyboardMacrosProvider>
     <div className="h-screen flex flex-col bg-background text-foreground">
       {/* Header */}
-      <header className="bg-card border-b border-card-04 px-4 h-12 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
+      <header className="bg-card border-b border-card-04 pl-2 pr-1 sm:px-4 h-10 sm:h-12 flex items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
           <Link
             to="/"
-            className="text-lg font-bold tracking-tight hover:opacity-80 transition-opacity shrink-0"
+            className="text-base sm:text-lg font-bold tracking-tight hover:opacity-80 transition-opacity shrink-0"
           >
             Bailey
           </Link>
+          {parentCrumb?.to && (
+            <Link
+              to={parentCrumb.to}
+              className="sm:hidden shrink-0 -mx-0.5 p-0.5 rounded text-foreground/50 hover:text-accent hover:bg-card-02 transition-colors"
+              title={`Back to ${parentCrumb.label}`}
+              aria-label={`Back to ${parentCrumb.label}`}
+            >
+              <ChevronLeft size={16} />
+            </Link>
+          )}
           {breadcrumbs?.map((bc, i) => (
-            <span key={i} className="flex items-center gap-2 min-w-0">
-              <span className="text-foreground/20">/</span>
+            <span
+              key={i}
+              className={`items-center gap-2 min-w-0 ${
+                i === breadcrumbs.length - 1 ? 'flex' : 'hidden sm:flex shrink-[2]'
+              }`}
+            >
+              <span className={`text-foreground/20 ${parentCrumb ? 'hidden sm:inline' : ''}`}>/</span>
               {bc.to ? (
                 <Link
                   to={bc.to}
                   className="text-sm font-medium hover:text-accent truncate transition-colors"
+                  title={bc.label}
                 >
                   {bc.label}
                 </Link>
               ) : (
-                <span className="text-sm font-medium truncate">{bc.label}</span>
+                <span className="text-sm font-medium truncate" title={bc.label}>{bc.label}</span>
               )}
             </span>
           ))}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {headerActions}
           {location.pathname.startsWith('/round/') && <Timer />}
           <Settings isOpen={showSettings} onOpenChange={setShowSettings} />
           {user && (
             <button
               onClick={() => setShowSettings(true)}
-              className="p-2 rounded hover:bg-card-02 transition-colors text-foreground/60"
+              className="p-1.5 sm:p-2 rounded hover:bg-card-02 transition-colors text-foreground/60"
               title="Settings"
               aria-label="Settings"
             >
@@ -87,7 +107,7 @@ export default function Layout({ children, breadcrumbs, headerActions }: LayoutP
             <div className="relative">
               <button
                 onClick={() => setShowUserMenu((v) => !v)}
-                className="p-2 rounded hover:bg-card-02 transition-colors text-sm text-foreground/60"
+                className="p-1.5 sm:p-2 rounded hover:bg-card-02 transition-colors text-sm text-foreground/60"
                 title={user.email ?? 'Account'}
               >
                 <svg

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef, memo } from 'react';
 import {
   DndContext,
   closestCenter,
+  pointerWithin,
   PointerSensor,
   TouchSensor,
   useSensor,
@@ -9,6 +10,7 @@ import {
   type DragEndEvent,
   DragOverlay,
   type DragStartEvent,
+  type CollisionDetection,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -17,13 +19,20 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import Cell, { COLOR_BG, sanitizeHtml } from './Cell';
-import { Trash2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react';
 import { SPEECH_COLUMNS, type CellColor, type SpeechColumn } from '../db/types';
 import type { useFlowGrid } from '../hooks/useFlowGrid';
 import { useUndoRedo } from '../hooks/useUndoRedo';
 import { shortcutFromKeyboardEvent, type MacroAction } from '../keyboardMacros';
 import { useKeyboardMacrosContext } from '../contexts/KeyboardMacrosContext';
-import { getColumnsForFlow } from './flowColumns';
+import { getColumnsForFlow, type FlowColumnConfig } from './flowColumns';
+import {
+  clampWindowStart,
+  getFocusWindowSize,
+  initialWindowStart,
+  windowStartForIndex,
+  windowStartFromScroll,
+} from './flowFocusWindow';
 import { flowSheetRootClass, type FlowSheetVariant } from './flowSheetVariant';
 import {
   type SelectionState,
@@ -76,6 +85,12 @@ const COLUMN_COLORS: Record<string, string> = {
 
 const CELL_HEIGHT = 28; // matches min-h-[28px] on each cell
 const HEADER_HEIGHT = 36; // approximate column header height
+
+/** Drop onto the cell under the pointer; wrapped (tall) cells skew center-based detection. */
+const pointerFirstCollision: CollisionDetection = (args) => {
+  const hits = pointerWithin(args);
+  return hits.length > 0 ? hits : closestCenter(args);
+};
 
 // ── Sortable cell wrapper ────────────────────────────────────
 
@@ -186,6 +201,7 @@ const FlowColumn = memo(function FlowColumn({
   onNavigate,
   onContextMenu,
   variant,
+  width,
 }: {
   dataCol: number;
   label: SpeechColumn;
@@ -209,6 +225,8 @@ const FlowColumn = memo(function FlowColumn({
   onStopEditing: () => void;
   onNavigate: (from: { col: number; row: number }, dir: 'up' | 'down' | 'left' | 'right') => void;
   onContextMenu: (e: React.MouseEvent, col: number, row: number) => void;
+  /** Fixed column width in px (narrow focus mode); otherwise columns flex to fill. */
+  width?: number;
 }) {
   const isFocusedColumn = selection.primaryCell?.col === dataCol;
   const items = useMemo(
@@ -224,7 +242,11 @@ const FlowColumn = memo(function FlowColumn({
       : `border-b border-card-04 ${isFocusedColumn ? 'border-b-2 border-b-accent' : ''}`;
 
   return (
-    <div className={`flex flex-col flex-1 min-w-[100px] ${columnBorderClass}`} data-flow-col={dataCol}>
+    <div
+      className={`flex flex-col ${width ? 'shrink-0 snap-start' : 'flex-1 min-w-[100px]'} ${columnBorderClass}`}
+      style={width ? { width } : undefined}
+      data-flow-col={dataCol}
+    >
       {/* Header */}
       <div
         data-column-header={dataCol}
@@ -271,6 +293,74 @@ const FlowColumn = memo(function FlowColumn({
     </div>
   );
 });
+
+// ── Narrow-width column navigator ────────────────────────────
+
+function FocusColumnNav({
+  columns,
+  start,
+  size,
+  onJump,
+}: {
+  columns: FlowColumnConfig[];
+  start: number;
+  size: number;
+  onJump: (start: number) => void;
+}) {
+  const end = start + size;
+  const navButton =
+    'p-1 rounded text-foreground/60 hover:bg-card-02 hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent transition-colors';
+  return (
+    <div
+      className="shrink-0 flex items-center gap-1 px-1 h-8 border-b border-card-04 bg-card"
+      role="toolbar"
+      aria-label="Speech columns"
+      data-focus-nav
+    >
+      <button
+        type="button"
+        onClick={() => onJump(start - 1)}
+        disabled={start === 0}
+        className={navButton}
+        aria-label="Previous speech"
+        title="Previous speech"
+      >
+        <ChevronLeft size={16} />
+      </button>
+      <div className="flex flex-1 min-w-0 items-stretch">
+        {columns.map((c, i) => {
+          const visible = i >= start && i < end;
+          return (
+            <button
+              key={`${c.label}-${c.dataCol}`}
+              type="button"
+              onClick={() => onJump(windowStartForIndex(i, start, size, columns.length))}
+              aria-pressed={visible}
+              title={visible ? `${c.label} (showing)` : `Show ${c.label}`}
+              className={`flex-1 min-w-0 px-0.5 py-1 text-[11px] font-semibold truncate transition-colors ${
+                visible
+                  ? `bg-background ${COLUMN_COLORS[c.side]} border-y border-card-04 ${i === start ? 'rounded-l border-l' : ''} ${i === end - 1 ? 'rounded-r border-r' : ''}`
+                  : 'text-foreground/40 hover:text-foreground/80 border-y border-transparent'
+              }`}
+            >
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+      <button
+        type="button"
+        onClick={() => onJump(start + 1)}
+        disabled={end >= columns.length}
+        className={navButton}
+        aria-label="Next speech"
+        title="Next speech"
+      >
+        <ChevronRight size={16} />
+      </button>
+    </div>
+  );
+}
 
 // ── Main grid ────────────────────────────────────────────────
 
@@ -371,6 +461,13 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   const [dragItem, setDragItem] = useState<{ id: string; col: number; row: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [windowStart, setWindowStart] = useState(0);
+  const windowStartRef = useRef(0);
+  const setWindowStartTracked = useCallback((start: number) => {
+    windowStartRef.current = start;
+    setWindowStart(start);
+  }, []);
   const hasScrolledToEndRef = useRef(false);
   const { macros } = useKeyboardMacrosContext();
   const selectionRef = useRef<SelectionState>(selection);
@@ -390,6 +487,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       setContainerHeight(entry.contentRect.height);
+      setContainerWidth(el.clientWidth);
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -503,21 +601,35 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
       return;
     }
 
+    if (anchorRef.current) anchorRef.current.userMoved = true;
+
+    let left = containerEl.scrollLeft;
+    const { focusSize: size, columnWidth: width, dataCols: cols } = focusRef.current;
+    if (size && width) {
+      const idx = cols.indexOf(selection.primaryCell.col);
+      if (idx >= 0) {
+        const start = windowStartForIndex(idx, windowStartRef.current, size, cols.length);
+        if (start !== windowStartRef.current) {
+          setWindowStartTracked(start);
+          left = start * width;
+        }
+      }
+    }
+
     const cellRect = el.getBoundingClientRect();
     const headerRect = headerEl.getBoundingClientRect();
     const containerRect = containerEl.getBoundingClientRect();
     const topBoundary = headerRect.bottom + 2;
     const bottomBoundary = containerRect.bottom - 2;
 
-    if (cellRect.top < topBoundary) {
-      containerEl.scrollBy({ top: cellRect.top - topBoundary, behavior: 'smooth' });
-      return;
-    }
+    let topDelta = 0;
+    if (cellRect.top < topBoundary) topDelta = cellRect.top - topBoundary;
+    else if (cellRect.bottom > bottomBoundary) topDelta = cellRect.bottom - bottomBoundary;
 
-    if (cellRect.bottom > bottomBoundary) {
-      containerEl.scrollBy({ top: cellRect.bottom - bottomBoundary, behavior: 'smooth' });
+    if (topDelta !== 0 || left !== containerEl.scrollLeft) {
+      containerEl.scrollTo({ left, top: containerEl.scrollTop + topDelta, behavior: 'smooth' });
     }
-  }, [selection.primaryCell]);
+  }, [selection.primaryCell, setWindowStartTracked]);
 
   // Cell update with undo tracking
   const handleCellUpdate = useCallback(
@@ -577,6 +689,65 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     [activeFlow?.initiated_by, activeFlow?.tab_kind]
   );
   const dataCols = useMemo(() => flowColumns.map((c) => c.dataCol), [flowColumns]);
+
+  // Narrow widths (split screen): show a sliding window of adjacent speeches.
+  const focusSize = getFocusWindowSize(containerWidth, flowColumns.length);
+  const columnWidth = focusSize ? containerWidth / focusSize : undefined;
+  const focusRef = useRef({ focusSize, columnWidth, dataCols });
+  focusRef.current = { focusSize, columnWidth, dataCols };
+
+  const scrollToWindowStart = useCallback(
+    (start: number, behavior: ScrollBehavior = 'smooth') => {
+      const { focusSize: size, columnWidth: width, dataCols: cols } = focusRef.current;
+      const el = containerRef.current;
+      if (!size || !width || !el) return;
+      const next = clampWindowStart(start, size, cols.length);
+      setWindowStartTracked(next);
+      el.scrollTo({ left: next * width, behavior });
+    },
+    [setWindowStartTracked]
+  );
+
+  const handleGridScroll = useCallback(() => {
+    const { focusSize: size, columnWidth: width, dataCols: cols } = focusRef.current;
+    const el = containerRef.current;
+    if (!size || !width || !el) return;
+    const next = windowStartFromScroll(el.scrollLeft, width, size, cols.length);
+    if (next !== windowStartRef.current) setWindowStartTracked(next);
+  }, [setWindowStartTracked]);
+
+  // Anchor the window on the latest speech when a sheet opens. Cells load
+  // asynchronously, so re-anchor once if the first load arrives before the
+  // user has scrolled or selected anything.
+  const anchorRef = useRef<{ key: string; settled: boolean; userMoved: boolean } | null>(null);
+  useEffect(() => {
+    if (!focusSize || defaultScrollToEnd) {
+      anchorRef.current = null;
+      return;
+    }
+    const key = `${activeFlowId}:${focusSize}`;
+    const prev = anchorRef.current;
+    if (prev && prev.key === key && (prev.settled || prev.userMoved)) return;
+    let lastFilled = -1;
+    flowColumns.forEach((c, i) => {
+      if (getColumnRowCount(c.dataCol) > 0) lastFilled = i;
+    });
+    anchorRef.current = { key, settled: grid.cells.size > 0, userMoved: false };
+    scrollToWindowStart(initialWindowStart(lastFilled, focusSize, flowColumns.length), 'auto');
+  }, [activeFlowId, focusSize, grid.cells, flowColumns, getColumnRowCount, defaultScrollToEnd, scrollToWindowStart]);
+
+  // Keep the same speeches in view when the window is resized.
+  useEffect(() => {
+    if (columnWidth) scrollToWindowStart(windowStartRef.current, 'auto');
+  }, [columnWidth, scrollToWindowStart]);
+
+  const jumpToWindowStart = useCallback(
+    (start: number) => {
+      if (anchorRef.current) anchorRef.current.userMoved = true;
+      scrollToWindowStart(start);
+    },
+    [scrollToWindowStart]
+  );
 
   // DEB-74: Compute dropped arguments
   const droppedKeys = useMemo(() => {
@@ -1047,11 +1218,28 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={pointerFirstCollision}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div ref={containerRef} className={`flex-1 overflow-auto min-h-0 ${flowSheetRootClass(variant)} relative`}>
+      <div className="flex flex-col flex-1 min-h-0 min-w-0">
+      {focusSize && (
+        <FocusColumnNav
+          columns={flowColumns}
+          start={windowStart}
+          size={focusSize}
+          onJump={jumpToWindowStart}
+        />
+      )}
+      <div
+        ref={containerRef}
+        onScroll={handleGridScroll}
+        onWheel={() => {
+          if (anchorRef.current) anchorRef.current.userMoved = true;
+        }}
+        className={`flex-1 overflow-auto min-h-0 ${flowSheetRootClass(variant)} relative ${focusSize && !dragItem ? 'snap-x snap-mandatory' : ''}`}
+        data-focus-columns={focusSize ?? undefined}
+      >
         {/* Selection count indicator */}
         {getSelectionCount(selection) > 1 && (
           <div className="absolute top-2 right-2 z-50 px-2 py-1 bg-accent text-accent-foreground text-xs font-medium rounded shadow-sm pointer-events-none">
@@ -1059,7 +1247,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
           </div>
         )}
         
-        <div className={`flex min-w-[800px] min-h-full ${variant === 'sharp' ? 'border-t border-l border-card-04' : ''}`}>
+        <div className={`flex ${focusSize ? 'w-max' : 'min-w-[800px]'} min-h-full ${variant === 'sharp' ? 'border-t border-l border-card-04' : ''}`}>
           {flowColumns.map(({ label, dataCol, side }) => (
             <FlowColumn
               key={`${label}-${dataCol}`}
@@ -1068,6 +1256,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
               side={side}
               rowCount={maxRows}
               variant={variant}
+              width={columnWidth}
               getCellContent={getCellContent}
               getCellColor={getCellColor}
               getCellComment={getCellComment}
@@ -1101,6 +1290,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
             />
           ))}
         </div>
+      </div>
       </div>
 
       <DragOverlay dropAnimation={null}>

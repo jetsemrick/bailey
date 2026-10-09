@@ -93,7 +93,7 @@ export default function RoundWorkspace({ roundId: id, tournament, grid }: RoundW
           <div className="shrink-0 flex border-b border-card-04 bg-card">
             <button
               onClick={() => setViewMode('flow')}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 text-[13px] sm:text-sm font-medium transition-colors ${
                 viewMode === 'flow'
                   ? 'text-accent border-b-2 border-accent -mb-px'
                   : 'text-foreground/60 hover:text-foreground'
@@ -103,7 +103,7 @@ export default function RoundWorkspace({ roundId: id, tournament, grid }: RoundW
             </button>
             <button
               onClick={() => setViewMode('analytics')}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 text-[13px] sm:text-sm font-medium transition-colors ${
                 viewMode === 'analytics'
                   ? 'text-accent border-b-2 border-accent -mb-px'
                   : 'text-foreground/60 hover:text-foreground'
@@ -114,7 +114,7 @@ export default function RoundWorkspace({ roundId: id, tournament, grid }: RoundW
             {tournament?.tournament_type === 'judge' && (
               <button
                 onClick={() => setViewMode('split')}
-                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 text-[13px] sm:text-sm font-medium transition-colors ${
                   viewMode === 'split'
                     ? 'text-accent border-b-2 border-accent -mb-px'
                     : 'text-foreground/60 hover:text-foreground'
@@ -123,10 +123,10 @@ export default function RoundWorkspace({ roundId: id, tournament, grid }: RoundW
                 Decision
               </button>
             )}
-            <div className="ml-auto flex items-center gap-4 pr-3">
+            <div className="ml-auto flex items-center gap-3 sm:gap-4 pr-2 sm:pr-3">
               {(viewMode === 'flow' || viewMode === 'split') && (
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-foreground/50">Highlight Drops</span>
+                  <span className="text-xs text-foreground/50 whitespace-nowrap"><span className="hidden sm:inline">Highlight </span>Drops</span>
                   <button
                     onClick={() => setShowDrops((v) => !v)}
                     className={`relative w-8 h-[18px] rounded-full transition-colors ${
@@ -144,7 +144,7 @@ export default function RoundWorkspace({ roundId: id, tournament, grid }: RoundW
               )}
               {viewMode === 'split' && (
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-foreground/50">Rebuttal Focus</span>
+                  <span className="text-xs text-foreground/50 whitespace-nowrap"><span className="hidden sm:inline">Rebuttal </span>Focus</span>
                   <button
                     onClick={() => setRebuttalFocus((v) => !v)}
                     className={`relative w-8 h-[18px] rounded-full transition-colors ${
@@ -165,8 +165,8 @@ export default function RoundWorkspace({ roundId: id, tournament, grid }: RoundW
 
           {/* Grid area or Analytics */}
           {viewMode === 'split' && id ? (
-            <div className="flex flex-1 overflow-hidden min-h-0">
-              <div className="flex flex-col flex-1 min-w-0 border-r border-card-04">
+            <div className="flex flex-col md:flex-row flex-1 overflow-hidden min-h-0">
+              <div className="flex flex-col flex-1 min-w-0 min-h-0 border-b md:border-b-0 md:border-r border-card-04">
                 {rebuttalFocus ? (
                   <DecisionView
                     flows={grid.flows}
@@ -180,7 +180,7 @@ export default function RoundWorkspace({ roundId: id, tournament, grid }: RoundW
                   <FlowGrid grid={grid} defaultScrollToEnd variant={flowSheetVariant} showDrops={showDrops} />
                 )}
               </div>
-              <div className="flex flex-col w-[380px] shrink-0 min-h-0 bg-background">
+              <div className="flex flex-col h-[40%] md:h-auto md:w-[380px] shrink-0 min-h-0 bg-background">
                 <RoundAnalytics roundId={id} isJudgeMode compact />
               </div>
             </div>
