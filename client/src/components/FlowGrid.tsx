@@ -481,7 +481,8 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
   const applySelectionRef = useRef<((next: any) => void) | null>(null);
   const bulkUpdateCellsRef = useRef(bulkUpdateCells);
 
-  // Track container height to fill viewport with rows
+  // Track container size. Re-run when a flow appears so an empty-round mount
+  // (no containerRef) still observes after the first tab is created.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -491,7 +492,7 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [activeFlowId]);
 
   // Handle default scroll to end (reset ref first, then scroll)
   useEffect(() => {
@@ -716,18 +717,25 @@ export default function FlowGrid({ grid, defaultScrollToEnd, variant = 'default'
     if (next !== windowStartRef.current) setWindowStartTracked(next);
   }, [setWindowStartTracked]);
 
-  // Anchor the window on the latest speech when a sheet opens. Cells load
+  // Anchor the window when a sheet opens. Key only on the flow so a resize
+  // that changes focusSize does not look like a new sheet. Cells load
   // asynchronously, so re-anchor once if the first load arrives before the
-  // user has scrolled or selected anything.
+  // user has scrolled or selected anything. defaultScrollToEnd pins to the
+  // last speeches (Decision view with Rebuttal Focus off).
   const anchorRef = useRef<{ key: string; settled: boolean; userMoved: boolean } | null>(null);
   useEffect(() => {
-    if (!focusSize || defaultScrollToEnd) {
+    if (!focusSize) {
       anchorRef.current = null;
       return;
     }
-    const key = `${activeFlowId}:${focusSize}`;
+    const key = activeFlowId ?? '';
     const prev = anchorRef.current;
     if (prev && prev.key === key && (prev.settled || prev.userMoved)) return;
+    if (defaultScrollToEnd) {
+      anchorRef.current = { key, settled: true, userMoved: false };
+      scrollToWindowStart(flowColumns.length, 'auto');
+      return;
+    }
     let lastFilled = -1;
     flowColumns.forEach((c, i) => {
       if (getColumnRowCount(c.dataCol) > 0) lastFilled = i;
